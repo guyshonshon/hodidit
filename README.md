@@ -1,11 +1,11 @@
 # DevOps Solver
 
-DevOps Solver is an AI-powered project designed to automate the process of reading, solving, and visualizing labs and homework from the DevSecOps-22 course. Built by Guy Shonshon.
+DevOps Solver is an AI-powered project designed to automate the process of reading, solving, and visualizing labs and homework from the DevSecOps course.
 
 ## Overview
 
 The core idea of the project is to provide an end-to-end intelligent agent that:
-- **Scrapes** the [DevSecOps-22](https://hothaifa96.github.io/DevSecOps22/) course site for Linux, Git, and Python labs.
+- **Scrapes** the [DevSecOps-22](https://hothaifa96.github.io/DevSecOps22/) course site for labs and homework.
 - **Solves** the exercises automatically using AI logic to generate step-by-step solutions.
 - **Visualizes** the solutions in an interactive, terminal-style interface.
 
@@ -13,7 +13,7 @@ By leveraging AI, the system evaluates the requirements of each lab and produces
 
 ## Tech Stack Highlights
 
-The application is built using modern web and backend technologies including Python, FastAPI, React, TypeScript, and AI integrations (like Google Gemini).
+The application is built using modern web and backend technologies including Python, FastAPI, React, TypeScript, Docker, GitHub Actions and AI integrations.
 
 ## Getting Started
 
@@ -34,3 +34,6 @@ docker compose up --build
 ```
 
 The application will be available at `http://localhost:3000`.
+
+Planned and Built by Guy Shonshon. 
+All Rights Reserved, please check out license for more information.
