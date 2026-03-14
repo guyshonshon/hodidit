@@ -1,0 +1,5 @@
+We need to have a clear reference to the Lab page and it's title, and for example, in the linux labs, there's one that it is unable to solve because it has a question stack that needs to be generated - we might need to manually press the generate button if exists, and then it should use the outputted.
+
+Also, when there are erorrs in generating solutions, it must take the error prompt and retry, if we test it and there are errors, we must send it back to the ai and then fix it - these steps aren't suppose to be in the final solutions or the steps!
+There might be cases where the labs / homeworks explicitly wants to see an error, those cases are acceptable and may be kept as error solution.
+
