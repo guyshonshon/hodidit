@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Leave empty to disable auth (useful for local dev without a key configured).
     api_key: str = ""
 
+    # ── Manual sync PIN ───────────────────────────────────────────────────────
+    # 4-digit PIN required to trigger a manual sync from the UI.
+    # Leave empty to allow unauthenticated sync (dev / no-auth mode).
+    sync_pin: str = ""
+
     # ── Repair loop ───────────────────────────────────────────────────────────
     # Max repair iterations after a failed execution (0 = no repair loop)
     max_repair_retries: int = 3

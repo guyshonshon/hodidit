@@ -23,6 +23,7 @@ from datetime import datetime, timezone, timedelta
 _TZ = timezone(timedelta(hours=2))  # GMT+2
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..classifier import ExerciseType, classify_exercise
@@ -365,9 +366,16 @@ async def _batch_resolve(slugs: list[str]) -> None:
         await asyncio.sleep(1)
 
 
+class SyncRequest(BaseModel):
+    pin: str = ""
+
+
 @router.post("/sync")
-async def sync_labs(session: Session = Depends(get_session)):
-    """Trigger manual re-scrape of the target site."""
+async def sync_labs(body: SyncRequest = SyncRequest(), session: Session = Depends(get_session)):
+    """Trigger manual re-scrape of the target site. PIN-protected when SYNC_PIN is set."""
+    if settings.sync_pin:
+        if body.pin != settings.sync_pin:
+            raise HTTPException(status_code=403, detail="Invalid PIN")
     fresh = await discover_labs()
     added, updated = 0, 0
     for lab in fresh:

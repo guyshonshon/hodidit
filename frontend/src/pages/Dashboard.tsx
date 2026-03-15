@@ -367,12 +367,179 @@ function CategoryBreakdown({ labs }: { labs: Lab[] }) {
 }
 
 
+// ── PIN modal ────────────────────────────────────────────────────────────────
+
+const PIN_KEYS = ["1","2","3","4","5","6","7","8","9","⌫","0","↵"];
+
+function PinModal({ onSuccess, onClose, errorCount }: { onSuccess: (pin: string) => void; onClose: () => void; errorCount?: number }) {
+  const [digits, setDigits] = useState<string[]>([]);
+  const [shake, setShake] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  // Reset and shake when parent increments errorCount (wrong PIN from backend)
+  useEffect(() => {
+    if (!errorCount) return;
+    setSubmitted(false);
+    setShake(true);
+    setDigits([]);
+    setTimeout(() => setShake(false), 500);
+  }, [errorCount]);
+
+  const triggerShake = () => {
+    setShake(true);
+    setDigits([]);
+    setTimeout(() => setShake(false), 500);
+  };
+
+  const handleKey = (k: string) => {
+    if (submitted) return;
+    if (k === "⌫") {
+      setDigits((d) => d.slice(0, -1));
+    } else if (k === "↵") {
+      if (digits.length === 4) {
+        setSubmitted(true);
+        onSuccess(digits.join(""));
+      } else {
+        triggerShake();
+      }
+    } else if (digits.length < 4) {
+      const next = [...digits, k];
+      setDigits(next);
+      if (next.length === 4) {
+        // auto-submit
+        setSubmitted(true);
+        onSuccess(next.join(""));
+      }
+    }
+  };
+
+  // Keyboard support — ref avoids stale closure over handleKey
+  const handleKeyRef = useRef(handleKey);
+  handleKeyRef.current = handleKey;
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") handleKeyRef.current(e.key);
+      else if (e.key === "Backspace") handleKeyRef.current("⌫");
+      else if (e.key === "Enter") handleKeyRef.current("↵");
+      else if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <motion.div
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.9, y: 12 }}
+        animate={shake
+          ? { opacity: 1, scale: 1, y: 0, x: [0, -10, 10, -8, 8, -4, 4, 0] }
+          : { opacity: 1, scale: 1, y: 0, x: 0 }
+        }
+        transition={shake ? { duration: 0.45, ease: "easeInOut" } : { duration: 0.25, ease: [0.16,1,0.3,1] }}
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 16,
+          padding: "32px 28px 28px",
+          width: 280,
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 24,
+          boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+        }}
+      >
+        {/* Header */}
+        <div style={{ textAlign: "center" }}>
+          <p className="font-mono" style={{ fontSize: 9, letterSpacing: "0.3em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: 6 }}>
+            Authorization Required
+          </p>
+          <p className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+            Enter Sync PIN
+          </p>
+        </div>
+
+        {/* Dot indicators */}
+        <div style={{ display: "flex", gap: 14 }}>
+          {[0,1,2,3].map((i) => (
+            <motion.div
+              key={i}
+              animate={{ scale: digits.length === i + 1 ? [1, 1.35, 1] : 1 }}
+              transition={{ duration: 0.18 }}
+              style={{
+                width: 14, height: 14, borderRadius: "50%",
+                background: i < digits.length ? "#60a5fa" : "transparent",
+                border: `2px solid ${i < digits.length ? "#60a5fa" : "rgba(255,255,255,0.2)"}`,
+                transition: "background 0.15s, border-color 0.15s",
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Numpad */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, width: "100%" }}>
+          {PIN_KEYS.map((k) => {
+            const isAction = k === "⌫" || k === "↵";
+            const isEnter = k === "↵";
+            return (
+              <button
+                key={k}
+                onClick={() => handleKey(k)}
+                className="font-mono"
+                style={{
+                  height: 52,
+                  borderRadius: 10,
+                  border: `1px solid ${isEnter && digits.length === 4 ? "rgba(96,165,250,0.5)" : "var(--border)"}`,
+                  background: isEnter && digits.length === 4
+                    ? "rgba(96,165,250,0.15)"
+                    : isAction
+                    ? "rgba(255,255,255,0.04)"
+                    : "var(--bg)",
+                  color: isAction ? "var(--text-2)" : "var(--text)",
+                  fontSize: isAction ? 16 : 18,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                  letterSpacing: isEnter ? "0" : "0",
+                }}
+              >
+                {k}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Cancel */}
+        <button
+          onClick={onClose}
+          className="font-mono"
+          style={{
+            fontSize: 10, color: "var(--text-3)", letterSpacing: "0.1em",
+            background: "none", border: "none", cursor: "pointer",
+            textTransform: "uppercase",
+          }}
+        >
+          Cancel
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
+// ── Next sync indicator ──────────────────────────────────────────────────────
+
 function NextSyncIndicator({ labs, intervalMinutes }: { labs: { last_scraped?: string | null }[]; intervalMinutes: number }) {
   const qc = useQueryClient();
   const [countdown, setCountdown] = useState<string>("");
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinErrorCount, setPinErrorCount] = useState(0);
 
   // Repeating countdown: shows time remaining in the current 60-min cycle.
-  // Uses modulo so it always counts 60:00 → 0:00 → 60:00 → … without going up.
   useEffect(() => {
     const lastScrapeMs = labs
       .filter((l) => l.last_scraped)
@@ -401,7 +568,7 @@ function NextSyncIndicator({ labs, intervalMinutes }: { labs: { last_scraped?: s
   }, [labs, intervalMinutes]);
 
   const syncMutation = useMutation({
-    mutationFn: labsApi.sync,
+    mutationFn: (pin: string) => labsApi.sync(pin),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["labs"] });
       const parts: string[] = [];
@@ -409,44 +576,66 @@ function NextSyncIndicator({ labs, intervalMinutes }: { labs: { last_scraped?: s
       if (data.updated) parts.push(`${data.updated} updated`);
       toast(`Sync done${parts.length ? `: ${parts.join(", ")}` : " — no changes"}`, "success");
     },
-    onError: (err: Error) => {
-      toast(`Sync failed: ${err.message}`, "error");
+    onError: (err: unknown) => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403) {
+        setPinErrorCount((n) => n + 1);
+        toast("Wrong PIN — access denied", "error");
+      } else {
+        toast(`Sync failed: ${(err as Error).message}`, "error");
+      }
     },
   });
 
   const isSyncing = syncMutation.isPending;
 
+  const handlePinSuccess = (pin: string) => {
+    syncMutation.mutate(pin, {
+      onSuccess: () => setPinOpen(false),
+      // keep modal open on error so user can retry or cancel
+    });
+  };
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={() => { if (!isSyncing) syncMutation.mutate(); }}
-          className="font-mono"
-          style={{
-            display: "flex", alignItems: "center", gap: "6px",
-            padding: "6px 12px", fontSize: "11px",
-            border: "1px solid var(--border)",
-            borderRadius: "6px", background: "transparent",
-            color: isSyncing ? "#60a5fa" : "var(--text-3)",
-            cursor: isSyncing ? "wait" : "pointer",
-            transition: "color 0.15s, border-color 0.15s",
-          }}
-        >
+    <>
+      {pinOpen && (
+        <PinModal
+          onSuccess={handlePinSuccess}
+          onClose={() => { setPinOpen(false); syncMutation.reset(); }}
+          errorCount={pinErrorCount}
+        />
+      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={() => { if (!isSyncing) setPinOpen(true); }}
+            className="font-mono"
+            style={{
+              display: "flex", alignItems: "center", gap: "6px",
+              padding: "6px 12px", fontSize: "11px",
+              border: "1px solid var(--border)",
+              borderRadius: "6px", background: "transparent",
+              color: isSyncing ? "#60a5fa" : "var(--text-3)",
+              cursor: isSyncing ? "wait" : "pointer",
+              transition: "color 0.15s, border-color 0.15s",
+            }}
+          >
+            {isSyncing
+              ? <RefreshCw size={11} style={{ animation: "spin 0.9s linear infinite" }} />
+              : <Clock size={11} />}
+            <span>{isSyncing ? "syncing…" : "next sync"}</span>
+            {!isSyncing && (
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>{countdown}</span>
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
           {isSyncing
-            ? <RefreshCw size={11} style={{ animation: "spin 0.9s linear infinite" }} />
-            : <Clock size={11} />}
-          <span>{isSyncing ? "syncing…" : "next sync"}</span>
-          {!isSyncing && (
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>{countdown}</span>
-          )}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>
-        {isSyncing
-          ? "Syncing labs with the course site…"
-          : `Click to sync now · auto-syncs every ${intervalMinutes} min`}
-      </TooltipContent>
-    </Tooltip>
+            ? "Syncing labs with the course site…"
+            : `Click to sync now · auto-syncs every ${intervalMinutes} min`}
+        </TooltipContent>
+      </Tooltip>
+    </>
   );
 }
 

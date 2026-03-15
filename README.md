@@ -10,7 +10,7 @@ Built for the [DevSecOps-22](https://hothaifa96.github.io/DevSecOps22/) course.
 
 ## What It Does
 
-On first boot, the backend scrapes the course site, classifies each exercise, and dispatches them to an AI solver — sequentially, with no rate-limit collisions. Every solution is cached: solved once, replayed forever. The frontend polls live during solving and renders the result the moment it emerges.
+On first boot, the backend scrapes the course site, classifies each exercise, and dispatches them to an AI solver. Every solution is cached: solved once, replayed forever. The frontend polls live during solving and renders the result the moment it emerges.
 
 - **Auto-discovery** — scrapes labs and homework directly from the course GitHub repository
 - **Exercise classification** — distinguishes normal, dynamic-generation, intentional-error, and ambiguous exercises before solving
@@ -54,6 +54,9 @@ GITHUB_REPO=username/repo-name
 # Optional: secure the API
 API_KEY=your-secret
 
+# Optional: PIN-protect the manual sync button (4 digits)
+SYNC_PIN=1234
+
 # Optional: Cloudflare Tunnel
 CLOUDFLARE_TUNNEL_TOKEN=...
 ```
@@ -89,6 +92,7 @@ docker compose -f docker-compose.dev.yml up --build
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model |
 | `AI_PROVIDER` | `auto` | `auto` · `openai` · `gemini` |
 | `API_KEY` | _(none)_ | When set, all API routes require `X-API-Key` header |
+| `SYNC_PIN` | _(none)_ | 4-digit PIN required to trigger a manual sync from the UI |
 | `MAX_REPAIR_RETRIES` | `3` | Self-repair iterations for failed Python steps |
 | `SCRAPE_INTERVAL_MINUTES` | `60` | Scheduler re-scrape interval |
 | `DATABASE_URL` | `sqlite:///./devops_solver.db` | SQLite path |
@@ -97,8 +101,6 @@ docker compose -f docker-compose.dev.yml up --build
 ---
 
 ## Management CLI
-
-Direct database operations — no backend process required:
 
 ```bash
 # Inspect all stored solutions
@@ -129,7 +131,7 @@ Discover labs → Classify exercise type
               Persist solution · Update UI live
 ```
 
-Once a solution is persisted it is never re-generated — unless explicitly cleared via the CLI or the per-lab **Reforge** button.
+Once a solution is persisted it is never re-generated — unless explicitly cleared via the CLI.
 
 ---
 
