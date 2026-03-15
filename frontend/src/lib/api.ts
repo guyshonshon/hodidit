@@ -22,8 +22,8 @@ export const labsApi = {
   replay: (slug: string): Promise<Solution> => api.post(`/labs/${slug}/replay`).then((r) => r.data),
   pushGitHub: (slug: string): Promise<{ success: boolean; pr_url?: string; message?: string }> =>
     api.post(`/labs/${slug}/push-github`).then((r) => r.data),
-  sync: (): Promise<{ added: number; updated: number }> =>
-    api.post("/labs/sync").then((r) => r.data),
+  sync: (pin?: string): Promise<{ added: number; updated: number }> =>
+    api.post("/labs/sync", { pin: pin ?? "" }).then((r) => r.data),
   reResolveAll: (): Promise<{ cleared: number; queued: number }> =>
     api.post("/labs/admin/re-solve-all").then((r) => r.data),
 };
