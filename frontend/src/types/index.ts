@@ -34,6 +34,8 @@ export interface Lab {
   ai_topic: string | null;
   solved: boolean;
   solution_status: SolutionStatus;
+  /** 1-2 sentence AI-generated summary of the solution. Empty until solved. */
+  summary: string;
   /** Timestamped pipeline log; populated while solving, kept after for reference. */
   solve_log: string;
   discovered_at: string;

@@ -8,7 +8,7 @@ export const TooltipTrigger = RadixTooltip.Trigger;
 export const TooltipContent = forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof RadixTooltip.Content>
->(({ children, ...props }, ref) => (
+>(({ children, style, ...props }, ref) => (
   <RadixTooltip.Portal>
     <RadixTooltip.Content
       ref={ref}
@@ -23,6 +23,7 @@ export const TooltipContent = forwardRef<
         borderRadius: "6px",
         boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
         zIndex: 9999,
+        ...style,
       }}
       {...props}
     >
