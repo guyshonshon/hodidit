@@ -34,4 +34,9 @@ if [[ ! -f .env ]]; then
 fi
 
 docker compose -f docker-compose.prod.yml up -d --build
+
+if [[ -x deploy/install_runtime_guard.sh ]]; then
+  deploy/install_runtime_guard.sh
+fi
+
 docker compose -f docker-compose.prod.yml ps

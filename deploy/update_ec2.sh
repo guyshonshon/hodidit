@@ -38,7 +38,7 @@ fi
 echo "Target instance: ${INSTANCE_ID} (region ${REGION})"
 echo "[1/4] Sending update command via SSM..."
 
-REMOTE_CMD="sudo -iu ubuntu bash -lc 'set -euo pipefail; cd ${APP_DIR}; git fetch origin; git checkout ${REPO_BRANCH}; git pull --ff-only origin ${REPO_BRANCH}; if ! docker compose -f docker-compose.prod.yml up -d --build >/tmp/devops-solver-update.log 2>&1; then tail -n 120 /tmp/devops-solver-update.log; exit 1; fi; docker compose -f docker-compose.prod.yml ps; tail -n 40 /tmp/devops-solver-update.log'"
+REMOTE_CMD="sudo -iu ubuntu bash -lc 'set -euo pipefail; cd ${APP_DIR}; git fetch origin; git checkout ${REPO_BRANCH}; git pull --ff-only origin ${REPO_BRANCH}; if ! docker compose -f docker-compose.prod.yml up -d --build >/tmp/devops-solver-update.log 2>&1; then tail -n 120 /tmp/devops-solver-update.log; exit 1; fi; if [ -x deploy/install_runtime_guard.sh ]; then deploy/install_runtime_guard.sh >>/tmp/devops-solver-update.log 2>&1 || true; fi; docker compose -f docker-compose.prod.yml ps; tail -n 40 /tmp/devops-solver-update.log'"
 PARAMS_JSON="$(jq -cn --arg c "${REMOTE_CMD}" '{commands:[$c]}')"
 
 COMMAND_ID="$(aws ssm send-command \
