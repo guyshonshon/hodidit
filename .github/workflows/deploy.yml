@@ -51,6 +51,7 @@ jobs:
           echo \"[deploy] whoami: $(whoami), pwd: $(pwd)\"
           echo \"[deploy] checking /opt/devops-solver...\"
           ls /opt/devops-solver || { echo \"ERROR: /opt/devops-solver not found\"; exit 1; }
+          git config --global --add safe.directory /opt/devops-solver
           cd /opt/devops-solver
           echo \"[deploy] git fetch origin\"
           git fetch origin 2>&1
