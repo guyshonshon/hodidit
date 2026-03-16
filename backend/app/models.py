@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from sqlmodel import SQLModel, Field, JSON, Column
+from sqlmodel import SQLModel, Field, Column
 import sqlalchemy as sa
 
 

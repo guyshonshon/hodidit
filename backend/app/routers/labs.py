@@ -21,8 +21,6 @@ import json
 import time
 from datetime import datetime, timezone, timedelta
 
-_TZ = timezone(timedelta(hours=2))  # GMT+2
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -30,12 +28,14 @@ from sqlmodel import Session, select
 from ..classifier import ExerciseType, classify_exercise
 from ..config import settings
 from ..database import get_session
-from ..models import Lab, Solution, SolutionStep, SolveRequest
+from ..models import Lab, Solution, SolveRequest
 from ..repairer import AttemptLog, repair_solution, serialize_logs
 from ..sandbox import apply_results, collect_sandbox_errors, run_steps_in_sandbox
 from ..scraper import discover_labs, fetch_generated_content
 from ..solver import solve_lab
 from ..git_handler import push_solution_to_github
+
+_TZ = timezone(timedelta(hours=2))  # GMT+2
 
 router = APIRouter(prefix="/labs", tags=["labs"])
 
@@ -180,7 +180,7 @@ async def _do_solve_pipeline(
                 session.commit()
 
         elif exercise_type == ExerciseType.ambiguous_manual_review:
-            _log(f"ERROR: Ambiguous exercise — skipping auto-solve")
+            _log("ERROR: Ambiguous exercise — skipping auto-solve")
             solution.solve_status_detail = "ambiguous_manual_review"
             solution.internal_log = serialize_logs([
                 AttemptLog(attempt=1, was_repair=False,
@@ -263,7 +263,7 @@ async def _do_solve_pipeline(
 
         if error:
             solve_status_detail = "unresolved"
-            _log(f"Max retries reached — saving best effort solution")
+            _log("Max retries reached — saving best effort solution")
         elif repair_count > 0:
             solve_status_detail = "repaired"
         else:

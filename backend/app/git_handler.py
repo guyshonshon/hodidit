@@ -1,9 +1,6 @@
 """GitHub integration: push solutions, create PRs, manage repos."""
 import json
-import os
-import tempfile
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 from github import Github, GithubException
