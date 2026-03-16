@@ -14,7 +14,6 @@ for the same exercise unless `force=True` is passed to the solve endpoint.
 """
 import asyncio
 import json
-import uuid
 
 from .ai_client import call_with_retries, get_solve_client, get_solve_provider_label, normalise_steps
 from .models import SolutionStep
