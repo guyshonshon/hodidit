@@ -4,13 +4,7 @@ on:
   push:
     branches: [main]
 
-# Minimal permission — only request the OIDC token needed for AWS auth
-permissions:
-  id-token: write   # required for OIDC
-  contents: read
-
 jobs:
-  # ── Build check ────────────────────────────────────────────────────────────
   build:
     name: Build check
     runs-on: ubuntu-latest
@@ -36,17 +30,16 @@ jobs:
         working-directory: frontend
         run: npm ci && npm run build
 
-  # ── Deploy to EC2 via SSM ──────────────────────────────────────────────────
   deploy:
     name: Deploy to EC2
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # OIDC auth — no static AWS keys stored anywhere
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Deploy via SSM
@@ -73,9 +66,8 @@ jobs:
             --query 'Command.CommandId' \
             --output text)
 
-          echo "SSM command dispatched: $COMMAND_ID"
+          echo "SSM command: $COMMAND_ID"
 
-          # Poll until terminal status (max ~7 min)
           STATUS=""
           for _ in $(seq 1 90); do
             STATUS=$(aws ssm get-command-invocation \
