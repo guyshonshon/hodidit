@@ -118,3 +118,4 @@ class SolveRequest(SQLModel):
     lab_slug: Optional[str] = None  # deprecated; slug comes from URL path
     execute: bool = False   # if True, actually run commands in a sandbox
     force: bool = False     # if True, re-solve even if steps already exist
+    pin: str = ""           # required when settings.reforge_pin is set and force=True

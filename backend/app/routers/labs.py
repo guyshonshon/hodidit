@@ -101,6 +101,11 @@ async def solve(slug: str, req: SolveRequest, session: Session = Depends(get_ses
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
+    # PIN check for forced re-solve (reforge)
+    if req.force and settings.reforge_pin:
+        if req.pin != settings.reforge_pin:
+            raise HTTPException(status_code=403, detail="Invalid reforge PIN")
+
     existing = session.exec(select(Solution).where(Solution.lab_slug == slug)).first()
     has_steps = bool(existing and existing.steps_json and existing.steps_json != "[]")
 

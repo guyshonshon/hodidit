@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # Leave empty to allow unauthenticated sync (dev / no-auth mode).
     sync_pin: str = ""
 
+    # ── Reforge PIN ───────────────────────────────────────────────────────────
+    # PIN required to force-regenerate a solution via the Reforge button.
+    # Leave empty to allow unauthenticated reforge (dev / no-auth mode).
+    reforge_pin: str = ""
+
     # ── Repair loop ───────────────────────────────────────────────────────────
     # Max repair iterations after a failed execution (0 = no repair loop)
     max_repair_retries: int = 3

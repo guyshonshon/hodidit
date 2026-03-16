@@ -16,9 +16,9 @@ export const configApi = {
 export const labsApi = {
   list: (): Promise<Lab[]> => api.get("/labs/").then((r) => r.data),
   get: (slug: string): Promise<LabDetail> => api.get(`/labs/${slug}`).then((r) => r.data),
-  // force=true bypasses the cache and regenerates with AI
-  solve: (slug: string, execute = false, force = false): Promise<{ message: string; solution: Solution }> =>
-    api.post(`/labs/${slug}/solve`, { lab_slug: slug, execute, force }).then((r) => r.data),
+  // force=true bypasses the cache and regenerates with AI; pin required when REFORGE_PIN is set server-side
+  solve: (slug: string, execute = false, force = false, pin = ""): Promise<{ message: string; solution: Solution }> =>
+    api.post(`/labs/${slug}/solve`, { lab_slug: slug, execute, force, pin }).then((r) => r.data),
   replay: (slug: string): Promise<Solution> => api.post(`/labs/${slug}/replay`).then((r) => r.data),
   pushGitHub: (slug: string): Promise<{ success: boolean; pr_url?: string; message?: string }> =>
     api.post(`/labs/${slug}/push-github`).then((r) => r.data),
