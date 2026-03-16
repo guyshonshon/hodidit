@@ -14,17 +14,17 @@ export function Navbar() {
       backdropFilter: "blur(16px)",
       WebkitBackdropFilter: "blur(16px)",
     }}>
-      <div style={{
+      <div className="navbar-inner" style={{
         maxWidth: "1200px", width: "100%", margin: "0 auto",
         padding: "0 40px", display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <Link to="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: "10px" }}>
           <div className="font-mono" style={{
-            fontSize: "11px", fontWeight: 700, letterSpacing: "0.06em",
-            color: "#60a5fa", padding: "4px 10px",
-            background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.22)", borderRadius: "5px",
+            fontSize: "13px", fontWeight: 700, letterSpacing: "0.02em",
+            color: "#dde5f0", padding: "4px 10px",
+            background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.22)", borderRadius: "5px",
           }}>
-            DEVOPS/SOLVER
+            Ho<span style={{ color: "#f97316" }}>did</span>it
           </div>
           <span className="font-mono" style={{ fontSize: "10px", color: "#4a607a" }}>by Guy Shonshon</span>
         </Link>

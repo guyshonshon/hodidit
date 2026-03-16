@@ -72,7 +72,7 @@ export function LabDetail() {
   return (
     <TooltipProvider>
       <div style={{ minHeight: "100vh", background: "var(--bg)", paddingTop: "52px" }}>
-        <div style={{ maxWidth: tab === "solution" ? "1400px" : "900px", margin: "0 auto", padding: "36px 40px 64px", transition: "max-width 0.25s ease" }}>
+        <div className="lab-page-pad" style={{ maxWidth: tab === "solution" ? "1400px" : "900px", margin: "0 auto", padding: "36px 40px 64px", transition: "max-width 0.25s ease" }}>
 
           {/* Breadcrumb */}
           <div className="font-mono" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: "var(--text-3)", marginBottom: "24px" }}>
@@ -96,7 +96,7 @@ export function LabDetail() {
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "1px", background: `linear-gradient(90deg, transparent, ${cfg.primary}60, transparent)` }} />
             <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "3px", background: cfg.primary, borderRadius: "12px 0 0 12px" }} />
 
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
+            <div className="lab-header-row" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {/* Category chips */}
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
@@ -152,7 +152,7 @@ export function LabDetail() {
                 )}
 
                 {solution?.summary && (
-                  <p className="font-mono" style={{ fontSize: "12px", color: "var(--text-2)", lineHeight: 1.6, maxWidth: "560px", marginTop: "6px" }}>
+                  <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: 1.65, marginTop: "6px" }}>
                     {solution.summary}
                   </p>
                 )}
@@ -170,7 +170,7 @@ export function LabDetail() {
                 )}
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div className="lab-header-meta" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <StatusBadge status={lab.solution_status} />
                 {isSolved && (
                   <Tooltip>

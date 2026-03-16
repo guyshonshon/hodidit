@@ -136,6 +136,31 @@ function StepCard({ step, index }: { step: SolutionStep; index: number }) {
           <>
             <CodeBlock code={step.content} border={cfg.border} />
 
+            {/* Inputs provided as stdin */}
+            {step.example_inputs && Object.keys(step.example_inputs).length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div className="font-mono" style={{
+                  fontSize: 9, color: '#60a5fa', letterSpacing: '0.1em',
+                  textTransform: 'uppercase', marginBottom: 4,
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#60a5fa', display: 'inline-block' }} />
+                  Inputs
+                </div>
+                <div className="font-mono" style={{
+                  fontSize: 12, background: 'rgba(0,0,0,0.25)',
+                  borderRadius: 5, padding: '8px 12px', lineHeight: 1.8,
+                }}>
+                  {Object.entries(step.example_inputs).map(([key, value]) => (
+                    <div key={key} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ color: '#4a607a', flexShrink: 0 }}>{key}:</span>
+                      <span style={{ color: '#eeffff' }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Real output from backend execution */}
             {step.output && (
               <div style={{ marginTop: 8 }}>
@@ -153,7 +178,7 @@ function StepCard({ step, index }: { step: SolutionStep; index: number }) {
                 <pre className="font-mono" style={{
                   fontSize: 12, color: '#c3e88d', background: 'rgba(0,0,0,0.25)',
                   borderRadius: 5, padding: '8px 12px', margin: 0,
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6,
                 }}>
                   {step.output}
                 </pre>

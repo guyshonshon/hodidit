@@ -29,3 +29,10 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #3a4f6e; }
 
 .font-mono { font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace; }
+
+@media (max-width: 640px) {
+  .lab-page-pad  { padding: 20px 14px 48px !important; }
+  .navbar-inner  { padding: 0 14px !important; }
+  .lab-header-row { flex-direction: column !important; }
+  .lab-header-row > .lab-header-meta { align-self: flex-start; }
+}
