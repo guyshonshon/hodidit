@@ -150,8 +150,9 @@ async def solve_lab(
     """
     client = get_solve_client()
     if not client:
-        summary, steps, topic, model = _fallback_solution(category, title)
-        return summary, steps, topic, model, ""
+        raise RuntimeError(
+            "No AI provider configured. Set OPENAI_API_KEY or GEMINI_API_KEY in your .env file."
+        )
 
     prompt = _build_prompt(category, title, content, questions_raw, subcategory, previous_error)
 
@@ -183,44 +184,3 @@ async def solve_lab(
     inferred_topic = data.get("inferred_topic", category).lower().strip() or category
     return data["summary"], steps, inferred_topic, get_solve_provider_label(), prompt
 
-
-# ── Fallback (no API key) ────────────────────────────────────────────────────
-
-def _fallback_solution(
-    category: str,
-    title: str,
-) -> tuple[str, list[SolutionStep], str, str]:
-    """Demo steps when no AI provider is configured."""
-    note = SolutionStep(
-        id=str(uuid.uuid4()),
-        type="explanation",
-        title="Configure an AI provider",
-        content=(
-            "No AI provider key is set. "
-            "Add OPENAI_API_KEY or GEMINI_API_KEY to your .env file to enable real solutions. "
-            "Get a free Gemini key at aistudio.google.com, or an OpenAI key at platform.openai.com."
-        ),
-        status="pending",
-    )
-
-    topic = category if category not in ("homework",) else "linux"
-
-    topic_demos: dict[str, list[SolutionStep]] = {
-        "linux": [
-            SolutionStep(id=str(uuid.uuid4()), type="command", title="Check current user", content="whoami", status="pending"),
-            SolutionStep(id=str(uuid.uuid4()), type="command", title="Show system info", content="uname -a", status="pending"),
-            SolutionStep(id=str(uuid.uuid4()), type="command", title="List home directory", content="ls -la ~", status="pending"),
-        ],
-        "python": [
-            SolutionStep(id=str(uuid.uuid4()), type="code", title="Hello World", content='print("Hello, World!")', status="pending"),
-        ],
-        "git": [
-            SolutionStep(id=str(uuid.uuid4()), type="git", title="Init repo", content="git init my-repo && cd my-repo", status="pending"),
-        ],
-        "docker": [
-            SolutionStep(id=str(uuid.uuid4()), type="docker", title="Run hello-world", content="docker run hello-world", status="pending"),
-        ],
-    }
-
-    steps = [note] + topic_demos.get(topic, [])
-    return f"Demo solution for {title} (no API key)", steps, topic, "demo"

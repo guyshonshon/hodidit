@@ -31,9 +31,12 @@ def _migrate_db():
             try:
                 conn.execute(_text(stmt))
                 conn.commit()
-            except Exception:
-                # Column already exists — safe to ignore
-                conn.rollback()
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "duplicate column" in msg or "already exists" in msg:
+                    conn.rollback()
+                else:
+                    raise
 
 
 def _text(sql: str):

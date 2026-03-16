@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { ExternalLink, Github, Zap, AlertTriangle, RefreshCw, Info, RotateCcw, List, PlayCircle } from "lucide-react";
@@ -16,10 +16,12 @@ const TABS = ["overview", "solution"] as const;
 
 export function LabDetail() {
   const { slug } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"overview" | "solution">("overview");
   const [ghResult, setGhResult] = useState<{ pr_url?: string; message?: string } | null>(null);
+  const [pinModal, setPinModal] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinError, setPinError] = useState("");
 
   const isSolving = (status: string | undefined) => status === "solving";
 
@@ -36,13 +38,30 @@ export function LabDetail() {
 
   // Re-solve mutation (force=true only — used for manual re-generation)
   const resolveMutation = useMutation({
-    mutationFn: () => labsApi.solve(slug!, false, true),
+    mutationFn: (pin: string) => labsApi.solve(slug!, false, true, pin),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lab", slug] });
       qc.invalidateQueries({ queryKey: ["labs"] });
+      setPinModal(false);
+      setPinValue("");
+      setPinError("");
       setTab("solution");
     },
+    onError: (err: unknown) => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setPinError(status === 403 ? "Incorrect PIN" : "Something went wrong");
+    },
   });
+
+  function handleReforgeClick() {
+    setPinError("");
+    setPinValue("");
+    setPinModal(true);
+  }
+
+  function handlePinSubmit() {
+    resolveMutation.mutate(pinValue);
+  }
 
   const pushMutation = useMutation({
     mutationFn: () => labsApi.pushGitHub(slug!),
@@ -76,11 +95,11 @@ export function LabDetail() {
 
           {/* Breadcrumb */}
           <div className="font-mono" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: "var(--text-3)", marginBottom: "24px" }}>
-            <button onClick={() => navigate("/")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", fontFamily: "inherit", fontSize: "inherit", padding: 0, transition: "color 0.15s" }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-2)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-3)"; }}>
+            <Link to="/" style={{ color: "var(--text-3)", textDecoration: "none", transition: "color 0.15s" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-2)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-3)"; }}>
               Dashboard
-            </button>
+            </Link>
             <span>/</span>
             <span style={{ color: cfg.text }}>{lab.category}</span>
             <span>/</span>
@@ -176,7 +195,7 @@ export function LabDetail() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <motion.button
-                        onClick={() => resolveMutation.mutate()}
+                        onClick={handleReforgeClick}
                         disabled={resolveMutation.isPending}
                         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                         className="font-mono"
@@ -371,6 +390,79 @@ export function LabDetail() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* PIN modal */}
+      <AnimatePresence>
+        {pinModal && (
+          <motion.div
+            key="pin-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: "fixed", inset: 0, zIndex: 100,
+              background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setPinModal(false); setPinError(""); } }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              style={{
+                background: "var(--surface)", border: "1px solid var(--border-2)",
+                borderRadius: 12, padding: "28px 28px 24px", width: 320,
+                boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <RefreshCw size={15} style={{ color: "var(--text-2)" }} />
+                <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Reforge solution</span>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.6, marginBottom: 20 }}>
+                This will discard the current solution and regenerate it from scratch with AI. Enter your PIN to continue.
+              </p>
+              <input
+                className="font-mono"
+                type="password"
+                inputMode="numeric"
+                placeholder="PIN"
+                value={pinValue}
+                autoFocus
+                onChange={(e) => { setPinValue(e.target.value); setPinError(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handlePinSubmit(); if (e.key === "Escape") { setPinModal(false); setPinError(""); } }}
+                style={{
+                  width: "100%", padding: "9px 12px", fontSize: 14, letterSpacing: "0.2em",
+                  background: "var(--surface-2)", border: `1px solid ${pinError ? "#f87171" : "var(--border-2)"}`,
+                  borderRadius: 7, color: "var(--text)", outline: "none", marginBottom: 6,
+                }}
+              />
+              {pinError && (
+                <div className="font-mono" style={{ fontSize: 11, color: "#f87171", marginBottom: 10 }}>{pinError}</div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={() => { setPinModal(false); setPinError(""); }} className="font-mono" style={{
+                  flex: 1, padding: "8px", fontSize: 11, fontWeight: 500, borderRadius: 7,
+                  background: "transparent", border: "1px solid var(--border)", color: "var(--text-3)", cursor: "pointer",
+                }}>
+                  Cancel
+                </button>
+                <motion.button
+                  onClick={handlePinSubmit}
+                  disabled={resolveMutation.isPending || !pinValue}
+                  whileTap={{ scale: 0.97 }}
+                  className="font-mono"
+                  style={{
+                    flex: 1, padding: "8px", fontSize: 11, fontWeight: 600, borderRadius: 7,
+                    background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.35)",
+                    color: "#fbbf24", cursor: "pointer",
+                    opacity: resolveMutation.isPending || !pinValue ? 0.5 : 1,
+                  }}
+                >
+                  {resolveMutation.isPending ? "Reforging…" : "Reforge"}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </TooltipProvider>
   );
 }
