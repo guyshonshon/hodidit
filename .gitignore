@@ -25,6 +25,7 @@ frontend/dist/
 .env
 backend/.env
 *.env.local
+docker-compose.prod.yml
 
 # IDE
 .vscode/

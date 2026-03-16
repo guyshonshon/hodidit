@@ -85,7 +85,7 @@ export function Dashboard() {
               {/* Right — stats strip */}
               <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
                 {[
-                  { label: "Labs",     refIdx: 0, color: "#60a5fa" },
+                  { label: "Labs", refIdx: 0, color: "#60a5fa" },
                   { label: "Mastered", refIdx: 1, color: "#34d399" },
                 ].map(({ label, refIdx, color }, i) => (
                   <div
@@ -204,7 +204,7 @@ export function Dashboard() {
           textAlign: "center", padding: "24px 40px 40px",
           fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em",
         }}>
-          Forged with precision by Guy Shonshon · {new Date().getFullYear()} · All rights reserved
+          Crafted by Guy Shonshon · {new Date().getFullYear()} · All rights reserved
         </div>
 
       </div>
@@ -369,7 +369,7 @@ function CategoryBreakdown({ labs }: { labs: Lab[] }) {
 
 // ── PIN modal ────────────────────────────────────────────────────────────────
 
-const PIN_KEYS = ["1","2","3","4","5","6","7","8","9","⌫","0","↵"];
+const PIN_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "↵"];
 
 function PinModal({ onSuccess, onClose, errorCount }: { onSuccess: (pin: string) => void; onClose: () => void; errorCount?: number }) {
   const [digits, setDigits] = useState<string[]>([]);
@@ -443,7 +443,7 @@ function PinModal({ onSuccess, onClose, errorCount }: { onSuccess: (pin: string)
           ? { opacity: 1, scale: 1, y: 0, x: [0, -10, 10, -8, 8, -4, 4, 0] }
           : { opacity: 1, scale: 1, y: 0, x: 0 }
         }
-        transition={shake ? { duration: 0.45, ease: "easeInOut" } : { duration: 0.25, ease: [0.16,1,0.3,1] }}
+        transition={shake ? { duration: 0.45, ease: "easeInOut" } : { duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
@@ -466,7 +466,7 @@ function PinModal({ onSuccess, onClose, errorCount }: { onSuccess: (pin: string)
 
         {/* Dot indicators */}
         <div style={{ display: "flex", gap: 14 }}>
-          {[0,1,2,3].map((i) => (
+          {[0, 1, 2, 3].map((i) => (
             <motion.div
               key={i}
               animate={{ scale: digits.length === i + 1 ? [1, 1.35, 1] : 1 }}
@@ -498,8 +498,8 @@ function PinModal({ onSuccess, onClose, errorCount }: { onSuccess: (pin: string)
                   background: isEnter && digits.length === 4
                     ? "rgba(96,165,250,0.15)"
                     : isAction
-                    ? "rgba(255,255,255,0.04)"
-                    : "var(--bg)",
+                      ? "rgba(255,255,255,0.04)"
+                      : "var(--bg)",
                   color: isAction ? "var(--text-2)" : "var(--text)",
                   fontSize: isAction ? 16 : 18,
                   fontWeight: 600,
