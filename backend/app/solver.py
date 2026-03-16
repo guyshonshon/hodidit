@@ -48,6 +48,22 @@ STRICT OUTPUT RULES:
 12. For Python scripts: write complete, runnable code. The output field should show what
     the script prints when run successfully.
 
+PYTHON CODE STYLE — CRITICAL:
+13. Write EXPLICIT, MANUAL implementations. Do NOT use shortcuts, built-in functions, or library
+    one-liners when the exercise is testing understanding of the underlying logic.
+    BAD:  result = max(x, y, z)
+    GOOD: if x >= y and x >= z:
+              result = x
+          elif y >= z:
+              result = y
+          else:
+              result = z
+14. The same applies to: sorting (no sort()/sorted()), searching (no 'in' keyword for manual
+    search tasks), string reversal (no [::-1] for reversal exercises), sum/min/max/count when
+    the exercise clearly wants manual iteration, etc.
+15. Only use built-ins/libraries when the exercise explicitly asks to use them or when the
+    topic is about learning that specific library (e.g., a numpy/pandas exercise).
+
 EXAMPLE_INPUTS rule (CRITICAL for interactive code):
 - If a 'code' step contains input() calls, you MUST include 'example_inputs': a JSON object
   mapping each variable that receives input() directly to a realistic example value string.
@@ -102,7 +118,11 @@ def _build_prompt(
     # Remind AI that Python code steps are verified by execution (labs/homework only)
     exec_note = ""
     if subcategory in ("labs", "homework"):
-        exec_note = "\nNOTE: Python 'code' steps will be executed in a sandbox. Write correct, runnable Python only."
+        exec_note = (
+            "\nNOTE: Python 'code' steps will be executed in a sandbox. Write correct, runnable Python only."
+            "\nIMPORTANT: Write EXPLICIT manual logic — no max(), min(), sort(), sorted(), sum() or other"
+            " built-in shortcuts when the exercise tests algorithmic understanding. Use if/elif/else, loops, etc."
+        )
 
     error_section = ""
     if previous_error:
