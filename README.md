@@ -87,16 +87,61 @@ Deployment helpers are in `deploy/`.
 
 ### Deployment Flow
 
-1. Provision host
-2. Deploy stack
-3. Push code changes
-4. Trigger update script
+1. Provision host (`provision_ec2.sh`)
+2. Initial deploy (`deploy_on_instance.sh`)
+3. Push to `main` — CI/CD takes over automatically
 
-Typical usage:
+---
 
-```bash
-./deploy/provision_ec2.sh
-./deploy/update_ec2.sh
+## CI/CD
+
+Every push to `main` triggers `.github/workflows/deploy.yml`:
+
+1. **Build check** — ruff lint on the backend, `npm run build` on the frontend
+2. **Deploy** — on success, sends an SSM command to the EC2 instance to pull the latest code and rebuild the Docker stack
+
+No SSH keys or open inbound ports required — deployment runs entirely over AWS SSM.
+
+Authentication uses **AWS OIDC** — no static AWS keys are stored anywhere. GitHub proves its identity to AWS via a short-lived token for each run.
+
+### Required GitHub Secrets / Variables
+
+| Name | Type | Description |
+|---|---|---|
+| `AWS_DEPLOY_ROLE_ARN` | Secret | ARN of the IAM role GitHub assumes (e.g. `arn:aws:iam::123456789012:role/GitHubDeployRole`) |
+| `EC2_INSTANCE_ID` | Secret | Instance ID (e.g. `i-0abc123`) |
+| `AWS_REGION` | Variable | Region (e.g. `eu-west-1`) |
+
+Set these under **Settings → Secrets and variables → Actions** in the repository.
+
+### IAM Role Setup (one-time)
+
+1. Add GitHub as an OIDC identity provider in IAM:
+   URL: `https://token.actions.githubusercontent.com`
+   Audience: `sts.amazonaws.com`
+
+2. Create an IAM role with this trust policy:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com" },
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
+    "StringLike":  { "token.actions.githubusercontent.com:sub": "repo:<owner>/devops-solver:ref:refs/heads/main" }
+  }
+}
+```
+
+3. Attach a policy with only the permissions needed:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["ssm:SendCommand", "ssm:GetCommandInvocation"],
+  "Resource": "*"
+}
 ```
 
 The project is intentionally documented without embedding secrets or sensitive values. Keep environment configuration in local `.env` files and out of version control.
@@ -125,6 +170,7 @@ Discover labs -> classify -> solve with AI -> validate/repair -> persist -> serv
 
 ```text
 devops-solver/
+├── .github/workflows/deploy.yml   # Build check + EC2 deploy on push to main
 ├── backend/
 │   └── app/
 │       ├── classifier.py

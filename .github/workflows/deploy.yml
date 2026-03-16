@@ -1,0 +1,97 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+# Minimal permission — only request the OIDC token needed for AWS auth
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+
+jobs:
+  # ── Build check ────────────────────────────────────────────────────────────
+  build:
+    name: Build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Backend — lint (ruff)
+        working-directory: backend
+        run: pip install ruff && ruff check app/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend — install & build
+        working-directory: frontend
+        run: npm ci && npm run build
+
+  # ── Deploy to EC2 via SSM ──────────────────────────────────────────────────
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # OIDC auth — no static AWS keys stored anywhere
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy via SSM
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          REMOTE='sudo -iu ubuntu bash -lc "set -euo pipefail
+          cd /opt/devops-solver
+          git fetch origin
+          git checkout main
+          git pull --ff-only origin main
+          docker compose -f docker-compose.prod.yml up -d --build >/tmp/deploy.log 2>&1 \
+            || { tail -n 80 /tmp/deploy.log; exit 1; }
+          tail -n 40 /tmp/deploy.log
+          docker compose -f docker-compose.prod.yml ps"'
+
+          PARAMS=$(jq -cn --arg c "$REMOTE" '{commands:[$c]}')
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "devops-solver deploy ${{ github.sha }}" \
+            --parameters "$PARAMS" \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "SSM command dispatched: $COMMAND_ID"
+
+          # Poll until terminal status (max ~7 min)
+          STATUS=""
+          for _ in $(seq 1 90); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query 'Status' --output text 2>/dev/null || echo "Pending")
+            case "$STATUS" in
+              Success|Failed|TimedOut|Cancelled|Undeliverable|Terminated) break ;;
+            esac
+            sleep 5
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent}' \
+            --output json
+
+          [ "$STATUS" = "Success" ] || { echo "Deploy failed — status: $STATUS"; exit 1; }
