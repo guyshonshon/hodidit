@@ -1,5 +1,7 @@
 # hoDIDit
 
+[![Build & Deploy](https://github.com/guyshonshon/hodidit/actions/workflows/deploy.yml/badge.svg)](https://github.com/guyshonshon/hodidit/actions/workflows/deploy.yml)
+
 > AI-forged DevOps lab solutions, with clean walkthroughs and a live sandbox.
 
 Hodidit discovers labs, solves them with AI, and presents them as step-by-step guides you can replay and test.

@@ -11,11 +11,24 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 20_000, retry: 2 } },
 });
 
+const BUILD = import.meta.env.VITE_BUILD_NUMBER;
+
 function MainLayout() {
   return (
-    <div style={{ background: "#080c18", minHeight: "100vh" }}>
+    <div style={{ background: "#080c18", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Navbar />
-      <Outlet />
+      <div style={{ flex: 1 }}>
+        <Outlet />
+      </div>
+      {BUILD && BUILD !== "dev" && (
+        <footer className="font-mono" style={{
+          textAlign: "center", padding: "18px 0 14px",
+          fontSize: "10px", color: "rgba(74,96,122,0.45)",
+          letterSpacing: "0.06em",
+        }}>
+          build #{BUILD}
+        </footer>
+      )}
     </div>
   );
 }
