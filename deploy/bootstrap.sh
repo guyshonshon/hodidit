@@ -207,7 +207,8 @@ PHASE3=$(cat <<SCRIPT
 set -euo pipefail
 
 cd ${APP_DIR}
-docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d --remove-orphans
 if [[ -x deploy/install_runtime_guard.sh ]]; then
   APP_DIR=${APP_DIR} ./deploy/install_runtime_guard.sh
 fi
