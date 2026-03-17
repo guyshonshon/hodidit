@@ -150,6 +150,10 @@ fi
 trap 'rm -f ${DEPLOY_LOCK_FILE}' EXIT
 : > ${DEPLOY_LOCK_FILE}
 
+BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+export BUILD_NUMBER
+echo "Build number: ${BUILD_NUMBER}"
+
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
 

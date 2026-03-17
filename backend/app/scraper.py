@@ -254,15 +254,21 @@ def extract_questions(text: str, url: str) -> list[dict]:
       A) Inline:  "1. Description"  /  "Task 2: Description"
       B) Header:  "**Task 1.1**"  on its own line, description on the next line(s)
                   (also handles "### Task 2.1", "**2.**", etc.)
+
+    full_text captures everything from the question marker to the next question
+    marker (in the original text), preserving code blocks and all formatting.
     """
-    # Remove fenced code blocks so we don't match numbered lines inside them
-    clean = re.sub(r"```[\s\S]*?```", "", text)
+    # Build a cleaned copy with code blocks replaced by the same number of blank
+    # lines so that line numbers stay aligned with the original text.
+    def _blank_fences(m: re.Match) -> str:
+        return "\n" * m.group(0).count("\n")
+
+    clean = re.sub(r"```[\s\S]*?```", _blank_fences, text)
     clean = re.sub(r"`[^`\n]+`", "", clean)
 
-    lines = clean.split("\n")
-    n = len(lines)
-    questions: list[dict] = []
-    q_num = 0
+    orig_lines = text.split("\n")
+    clean_lines = clean.split("\n")
+    n = len(clean_lines)
 
     # Regex: optional markdown markers, optional keyword, mandatory number (with
     # optional sub-number like 1.1), optional separator, optional inline text.
@@ -275,11 +281,11 @@ def extract_questions(text: str, url: str) -> list[dict]:
         re.IGNORECASE,
     )
 
+    # First pass: locate question start lines and their headline text.
+    question_starts: list[tuple[int, str]] = []  # (line_idx, headline)
     i = 0
     while i < n:
-        raw = lines[i]
-        stripped = raw.strip()
-
+        stripped = clean_lines[i].strip()
         if not stripped:
             i += 1
             continue
@@ -287,16 +293,15 @@ def extract_questions(text: str, url: str) -> list[dict]:
         m = _TASK_RE.match(stripped)
         if m:
             inline_text = m.group(3).strip()
+            consumed_until = i
 
             # If no inline text, look ahead for the description on subsequent lines
-            consumed_until = i  # track how far ahead we read
             if not inline_text:
                 j = i + 1
                 desc_parts: list[str] = []
                 while j < n and len(desc_parts) < 3:
-                    nl = lines[j].strip()
+                    nl = clean_lines[j].strip()
                     nl_norm = re.sub(r"^[#*_]+\s*", "", nl)
-                    # Stop at blank lines after we have something, or at next task marker
                     if not nl:
                         if desc_parts:
                             break
@@ -304,37 +309,30 @@ def extract_questions(text: str, url: str) -> list[dict]:
                         continue
                     if _TASK_RE.match(nl_norm):
                         break
-                    # Skip very short tokens that look like command-only lines (e.g. "### **whoami**")
                     if len(nl_norm) >= 12:
                         desc_parts.append(nl_norm)
                         consumed_until = j
                     j += 1
                 inline_text = " ".join(desc_parts)
 
-            if not inline_text:
-                i += 1
-                continue
-
-            q_num += 1
-            questions.append({
-                "id": q_num,
-                "number": q_num,   # sequential so question_ref from solver always matches
-                "text": inline_text,
-                "full_text": inline_text,
-                "context": [],
-            })
-            # Skip lines that were consumed by look-ahead so they don't become context
-            i = consumed_until
-        elif questions and len(stripped) > 10 and not stripped.startswith("#"):
-            # Accumulate extra context lines for the last question
-            questions[-1]["context"].append(stripped)
+            if inline_text:
+                question_starts.append((i, inline_text))
+                i = consumed_until
 
         i += 1
 
-    for q in questions:
-        ctx = " ".join(q.pop("context", [])[:2])
-        if ctx:
-            q["full_text"] = f"{q['text']} {ctx}".strip()
+    # Second pass: extract full question blocks from the original (unstripped) text.
+    questions: list[dict] = []
+    for idx, (start_line, headline) in enumerate(question_starts):
+        end_line = question_starts[idx + 1][0] if idx + 1 < len(question_starts) else len(orig_lines)
+        full_block = "\n".join(orig_lines[start_line:end_line]).strip()
+        q_num = idx + 1
+        questions.append({
+            "id": q_num,
+            "number": q_num,
+            "text": headline,
+            "full_text": full_block,
+        })
 
     return questions
 

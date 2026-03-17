@@ -72,13 +72,13 @@ export function Dashboard() {
               {/* Left */}
               <div>
                 <p className="font-mono" style={{ fontSize: "10px", color: "var(--text-3)", letterSpacing: "0.3em", textTransform: "uppercase", marginBottom: "10px" }}>
-                  DevSecOps · Intelligence at Your Command
+                  DevSecOps· Let's hope hodi won't find out :)
                 </p>
                 <h1 style={{ fontSize: "34px", fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em", lineHeight: 1.1, marginBottom: "8px" }}>
-                  Lab Dashboard
+                  Dashboard
                 </h1>
                 <p className="font-mono" style={{ fontSize: "12px", color: "var(--text-2)" }}>
-                  AI-forged solutions · step-by-step mastery · on demand
+                  Labs solved by AI · sourced from the <a href="https://hothaifa96.github.io/DevSecOps22/" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", opacity: 0.7 }}>DevSecOps22</a> course
                 </p>
               </div>
 

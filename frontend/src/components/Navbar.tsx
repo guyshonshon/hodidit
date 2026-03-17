@@ -49,13 +49,18 @@ export function Navbar() {
           ))}
         </nav>
 
-        <div className="font-mono" style={{ display: "flex", alignItems: "center", gap: "7px", fontSize: "10px", color: "#4a607a" }}>
-          <motion.span
-            style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }}
-            animate={{ opacity: [1, 0.35, 1] }}
-            transition={{ duration: 2.5, repeat: Infinity }}
-          />
-          LIVE
+        <div className="font-mono" style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "10px", color: "#4a607a" }}>
+          {import.meta.env.VITE_BUILD_NUMBER && import.meta.env.VITE_BUILD_NUMBER !== "dev" && (
+            <span style={{ opacity: 0.6 }}>#{import.meta.env.VITE_BUILD_NUMBER}</span>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+            <motion.span
+              style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }}
+              animate={{ opacity: [1, 0.35, 1] }}
+              transition={{ duration: 2.5, repeat: Infinity }}
+            />
+            LIVE
+          </div>
         </div>
       </div>
     </header>

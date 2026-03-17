@@ -6,9 +6,11 @@
  * single ungrouped section.
  */
 
+import ReactMarkdown from 'react-markdown';
 import { Question, SolutionStep } from '../types';
 import { PythonSandbox } from './PythonSandbox';
 import { SyntaxLine } from './execution/tokenize';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './ui/Tooltip';
 
 // ── Step type colours (matches SolutionExecutionView palette) ─────────────────
 const SCFG: Record<string, { bg: string; border: string; text: string; accent: string }> = {
@@ -86,7 +88,7 @@ function CodeBlock({ code, border }: { code: string; border: string }) {
   );
 }
 
-function StepCard({ step, index }: { step: SolutionStep; index: number }) {
+function StepCard({ step, index, questionText }: { step: SolutionStep; index: number; questionText?: string }) {
   const cfg = sc(step.type);
   const isCode = step.type === 'code';
   const isTerm = step.type === 'command' || step.type === 'git' || step.type === 'docker';
@@ -119,19 +121,91 @@ function StepCard({ step, index }: { step: SolutionStep; index: number }) {
               #{index + 1}
             </span>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.35 }}>
-            {step.title}
-          </div>
-          {step.description && (
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.5 }}>
-              {step.description}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.35, flex: 1 }}>
+              {step.title}
             </div>
-          )}
+            {step.description && (
+              <Tooltip delayDuration={120}>
+                <TooltipTrigger asChild>
+                  <span style={{
+                    fontSize: 11, color: 'var(--text-3)', cursor: 'default',
+                    lineHeight: 1, marginTop: 1, flexShrink: 0,
+                    opacity: 0.5,
+                    transition: 'opacity 0.15s',
+                  }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0.5'; }}
+                  >
+                    ⓘ
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  style={{
+                    maxWidth: 280, padding: 0,
+                    background: 'rgba(10,14,28,0.95)',
+                    border: `1px solid ${cfg.border}`,
+                    borderRadius: 8,
+                    backdropFilter: 'blur(12px)',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '7px 11px 6px',
+                    borderBottom: `1px solid ${cfg.border}`,
+                    background: cfg.bg,
+                  }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: cfg.accent, display: 'inline-block', flexShrink: 0 }} />
+                    <span className="font-mono" style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: cfg.text }}>
+                      AI Summary
+                    </span>
+                  </div>
+                  <div style={{ padding: '9px 12px', fontSize: 11, color: '#dde4f0', lineHeight: 1.65, whiteSpace: 'normal' }}>
+                    {step.description}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Content */}
       <div style={{ padding: '12px 16px' }}>
+        {/* Question context — shown after the title, before the code */}
+        {questionText && (
+          <div style={{
+            marginBottom: 12, padding: '9px 12px',
+            borderRadius: 6, background: 'rgba(255,255,255,0.02)',
+            border: `1px solid ${cfg.border}`,
+          }}>
+            <div className="font-mono" style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: 'var(--text-3)', marginBottom: 4,
+            }}>
+              Question
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65 }} className="question-md">
+              <ReactMarkdown
+                components={{
+                  p: ({ children }) => <p style={{ margin: '0 0 6px' }}>{children}</p>,
+                  strong: ({ children }) => <strong style={{ fontWeight: 700, color: 'var(--text)' }}>{children}</strong>,
+                  em: ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
+                  code: ({ children }) => <code style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: 'monospace' }}>{children}</code>,
+                  ul: ({ children }) => <ul style={{ margin: '4px 0', paddingLeft: 18 }}>{children}</ul>,
+                  ol: ({ children }) => <ol style={{ margin: '4px 0', paddingLeft: 18 }}>{children}</ol>,
+                  li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
+                }}
+              >
+                {questionText}
+              </ReactMarkdown>
+            </div>
+          </div>
+        )}
+
         {isCode && (
           <>
             <CodeBlock code={step.content} border={cfg.border} />
@@ -270,15 +344,15 @@ export function SolutionStepList({ steps, questions = [] }: Props) {
   let globalIdx = 0;
 
   return (
-    <div>
-      {groups.map((group, gi) => {
-        const question = group.qRef != null ? questionMap.get(group.qRef) : undefined;
-        return (
-          <div key={gi} style={{ marginBottom: 24 }}>
-            {/* Question header — only shown when question_refs are present */}
-            {hasQuestionRefs && group.qRef != null && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: question ? 6 : 0 }}>
+    <TooltipProvider>
+      <div>
+        {groups.map((group, gi) => {
+          const question = group.qRef != null ? questionMap.get(group.qRef) : undefined;
+          return (
+            <div key={gi} style={{ marginBottom: 24 }}>
+              {/* Q-number divider — only the badge + line, no floating question text */}
+              {hasQuestionRefs && group.qRef != null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <div className="font-mono" style={{
                     fontSize: 11, fontWeight: 700, color: 'var(--text-2)',
                     padding: '3px 10px', borderRadius: 4,
@@ -289,25 +363,18 @@ export function SolutionStepList({ steps, questions = [] }: Props) {
                   </div>
                   <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
                 </div>
-                {question && question.text && (
-                  <div style={{
-                    fontSize: 12, color: 'var(--text-2)', lineHeight: 1.55,
-                    padding: '4px 2px',
-                  }}>
-                    {question.text}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Steps in this group */}
-            {group.steps.map((step) => {
-              const idx = globalIdx++;
-              return <StepCard key={step.id} step={step} index={idx} />;
-            })}
-          </div>
-        );
-      })}
-    </div>
+              {/* Steps — first step gets the full question text injected inside its card */}
+              {group.steps.map((step, si) => {
+                const idx = globalIdx++;
+                const questionText = si === 0 && question?.full_text ? question.full_text : undefined;
+                return <StepCard key={step.id} step={step} index={idx} questionText={questionText} />;
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }

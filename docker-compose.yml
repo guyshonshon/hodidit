@@ -18,7 +18,10 @@ services:
       start_period: 10s
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - VITE_BUILD_NUMBER=${BUILD_NUMBER:-dev}
     container_name: hodidit-frontend
     restart: unless-stopped
     depends_on:

@@ -18,7 +18,7 @@ def push_solution_to_github(lab_slug: str, steps: list[dict], summary: str) -> d
     """Push solution files to the configured GitHub repo."""
     gh = get_github_client()
     if not gh or not settings.github_repo:
-        return {"success": False, "message": "GitHub not configured"}
+        return {"success": False, "message": "ואללה, חודי יהרוג אותי אם אני אעשה את זה"}
 
     try:
         repo = gh.get_repo(settings.github_repo)

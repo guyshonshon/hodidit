@@ -74,17 +74,37 @@ async def execute_step(step: SolutionStep, workdir: str, idx: int) -> dict:
         return {"stdout": "", "stderr": "", "exit_code": 0, "success": True, "skipped": True}
 
     fname = os.path.join(workdir, f"step_{idx}.py")
+    script = _build_script_with_input_echo(content, step.example_inputs)
     with open(fname, "w") as f:
-        f.write(content)
+        f.write(script)
 
-    stdin_data = _build_stdin(step.example_inputs)
-    return await _run_python(fname, workdir, stdin_data)
+    return await _run_python(fname, workdir)
 
 
-def _build_stdin(example_inputs: Optional[dict]) -> bytes:
+def _build_script_with_input_echo(content: str, example_inputs: Optional[dict]) -> str:
+    """Prepend an input() override that echoes each supplied value to stdout.
+
+    This simulates real terminal behaviour where typed input is echoed back,
+    so the captured output looks like:
+        Enter a string: HelloWorld
+        The input contains only letters.
+    instead of:
+        Enter a string: The input contains only letters.
+    """
     if not example_inputs:
-        return b""
-    return ("\n".join(str(v) for v in example_inputs.values()) + "\n").encode()
+        return content
+    values = [str(v) for v in example_inputs.values()]
+    preamble = (
+        "import sys as _sys\n"
+        f"_input_values = iter({values!r})\n"
+        "def input(prompt=''):\n"
+        "    _sys.stdout.write(str(prompt))\n"
+        "    val = next(_input_values)\n"
+        "    _sys.stdout.write(str(val) + '\\n')\n"
+        "    _sys.stdout.flush()\n"
+        "    return str(val)\n\n"
+    )
+    return preamble + content
 
 
 # ── Batch executor ────────────────────────────────────────────────────────────

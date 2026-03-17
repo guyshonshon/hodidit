@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG VITE_BUILD_NUMBER=dev
+ENV VITE_BUILD_NUMBER=$VITE_BUILD_NUMBER
 RUN npm run build
 
 FROM nginx:alpine

@@ -113,8 +113,35 @@ async def solve(slug: str, req: SolveRequest, session: Session = Depends(get_ses
     if has_steps and not req.force:
         return {"message": "Replaying stored solution", "solution": _format_solution(existing)}
 
-    result = await _do_solve_pipeline(lab, session, existing, force=req.force)
+    # Force reforge: mark as solving immediately, run pipeline in background, return at once.
+    # This avoids HTTP timeouts (Cloudflare / nginx cut connections after ~100s;
+    # AI solve can take much longer). The frontend polls while status == "solving".
+    if req.force:
+        solution = existing or Solution(lab_slug=lab.slug)
+        solution.status = "solving"
+        solution.solve_log = ""
+        session.add(solution)
+        session.commit()
+        session.refresh(solution)
+        asyncio.create_task(_bg_reforge(lab.slug))
+        return {"message": "Reforging", "solution": _format_solution(solution)}
+
+    result = await _do_solve_pipeline(lab, session, existing, force=False)
     return {"message": "Solved", "solution": result}
+
+
+async def _bg_reforge(slug: str) -> None:
+    """Run reforge pipeline in the background so the HTTP response returns immediately."""
+    from ..database import engine as _engine
+    with Session(_engine) as bg_session:
+        lab = bg_session.exec(select(Lab).where(Lab.slug == slug)).first()
+        if not lab:
+            return
+        existing = bg_session.exec(select(Solution).where(Solution.lab_slug == slug)).first()
+        try:
+            await _do_solve_pipeline(lab, bg_session, existing, force=True)
+        except Exception as exc:
+            print(f"[reforge] {slug}: {exc}")
 
 
 # ── Core pipeline (shared between HTTP endpoint and startup auto-solve) ─────────

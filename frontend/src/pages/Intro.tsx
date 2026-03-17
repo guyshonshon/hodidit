@@ -5,10 +5,13 @@ import { motion, AnimatePresence } from "framer-motion";
 // ── Typing sequence ──────────────────────────────────────────────────────────
 
 const LINES: { text: string; pause?: number }[] = [
-  { text: "Every child shares the same secret wish —" },
-  { text: "a smarter way through the mountain of homework.", pause: 900 },
+  { text: "Every child once dreamed of it —" },
+  { text: "homework magically handling itself...", pause: 900 },
   { text: "" },
-  { text: "That wish has a name now.", pause: 600 },
+  { text: "That dream finally came true.", pause: 600 },
+  { text: "", pause: 1000 },
+  { text: "Well...", pause: 200 },
+  { text: "atleast for this course :)" }
 ];
 
 const CHAR_DELAY = 38;   // ms per character
@@ -46,6 +49,20 @@ export function Intro() {
   const [phase, setPhase] = useState<"typing" | "name" | "ready">("typing");
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Enter / Escape → skip to end immediately
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Enter" && e.key !== "Escape") return;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setDone(LINES.map(l => l.text));
+      setPartial("");
+      setLineIdx(LINES.length);
+      setPhase("ready");
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     if (phase !== "typing") return;
@@ -196,7 +213,7 @@ export function Intro() {
                     fontSize: 13, color: "rgba(220,230,255,0.4)",
                     letterSpacing: "0.02em", marginTop: 2,
                   }}>
-                    makes that wish come true.
+                    makes that dream come true.
                   </p>
                 </motion.div>
               )}
