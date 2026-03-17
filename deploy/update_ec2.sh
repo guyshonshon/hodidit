@@ -8,6 +8,9 @@ INSTANCE_ID="${INSTANCE_ID:?Set EC2_INSTANCE_ID in GitHub secrets}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 APP_DIR="${APP_DIR:-/opt/hodidit}"
 
+REGION="$(printf '%s' "${REGION}" | tr -d '[:space:]')"
+INSTANCE_ID="$(printf '%s' "${INSTANCE_ID}" | tr -d '[:space:]')"
+
 aws_with_retry() {
   local attempt=1
   local max_attempts="${AWS_MAX_ATTEMPTS:-5}"
@@ -33,20 +36,86 @@ aws_with_retry() {
   done
 }
 
+get_ssm_ping_status() {
+  aws_with_retry aws ssm describe-instance-information \
+    --region "$REGION" \
+    --query "InstanceInformationList[?InstanceId=='${INSTANCE_ID}'] | [0].PingStatus" \
+    --output text || true
+}
+
+get_ec2_state() {
+  aws_with_retry aws ec2 describe-instances \
+    --region "$REGION" \
+    --instance-ids "$INSTANCE_ID" \
+    --query 'Reservations[0].Instances[0].State.Name' \
+    --output text || true
+}
+
+probe_ssm_run_command() {
+  local probe_id probe_status
+
+  probe_id="$(aws_with_retry aws ssm send-command \
+    --region "$REGION" \
+    --instance-ids "$INSTANCE_ID" \
+    --document-name AWS-RunShellScript \
+    --comment "SSM probe from update_ec2.sh" \
+    --parameters '{"commands":["echo ssm-ok"]}' \
+    --query 'Command.CommandId' \
+    --output text || true)"
+
+  [[ -n "$probe_id" && "$probe_id" != "None" ]] || return 1
+
+  for _ in {1..12}; do
+    probe_status="$(aws_with_retry aws ssm get-command-invocation \
+      --region "$REGION" \
+      --command-id "$probe_id" \
+      --instance-id "$INSTANCE_ID" \
+      --query 'Status' \
+      --output text || true)"
+    case "$probe_status" in
+      Success)
+        return 0
+        ;;
+      Failed|TimedOut|Cancelled|Undeliverable|Terminated)
+        return 1
+        ;;
+    esac
+    sleep 5
+  done
+
+  return 1
+}
+
 # Wait for SSM agent
 echo "Waiting for SSM on $INSTANCE_ID..."
 PING=""
-for _ in {1..60}; do
-  PING=$(aws_with_retry aws ssm describe-instance-information \
-    --region "$REGION" \
-    --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
-    --query 'InstanceInformationList[0].PingStatus' \
-    --output text || true)
+EC2_STATE=""
+for i in {1..60}; do
+  PING="$(get_ssm_ping_status)"
   [[ "$PING" == "None" || "$PING" == "[]" ]] && PING=""
+  if (( i == 1 || i % 6 == 0 )); then
+    EC2_STATE="$(get_ec2_state)"
+  fi
+  printf "\r[wait %02d/60] EC2: %-10s SSM: %-14s" "$i" "${EC2_STATE:-unknown}" "${PING:-missing}"
   [[ "$PING" == "Online" ]] && break
   sleep 5
 done
-[[ "$PING" == "Online" ]] || { echo "ERROR: SSM not online for $INSTANCE_ID" >&2; exit 1; }
+echo
+
+if [[ "$PING" != "Online" ]]; then
+  echo "SSM did not report Online via describe-instance-information. Trying direct RunCommand probe..."
+  if probe_ssm_run_command; then
+    echo "Direct SSM probe succeeded. Continuing with deploy."
+  else
+    EC2_STATE="$(get_ec2_state)"
+    echo "ERROR: SSM not online for $INSTANCE_ID" >&2
+    echo "  REGION=${REGION}" >&2
+    echo "  INSTANCE_ID=${INSTANCE_ID}" >&2
+    echo "  EC2_STATE=${EC2_STATE:-unknown}" >&2
+    echo "Check that the GitHub secret EC2_INSTANCE_ID matches the current instance and that the region is correct." >&2
+    exit 1
+  fi
+fi
 
 # Build remote script (variables expanded locally before sending)
 # SSM runs with /bin/sh — re-exec with bash for pipefail + [[ support
