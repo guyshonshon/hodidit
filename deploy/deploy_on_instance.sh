@@ -21,9 +21,15 @@ if [[ ! -d .git ]]; then
   fi
   git clone --branch "${REPO_BRANCH}" "${REPO_URL}" .
 else
-  git fetch origin
-  git checkout "${REPO_BRANCH}"
-  git pull --ff-only origin "${REPO_BRANCH}"
+  # The instance checkout is disposable. Keep only local runtime files
+  # and force the repo itself to match origin on every deploy.
+  git fetch --prune origin
+  git checkout -f "${REPO_BRANCH}"
+  git reset --hard "origin/${REPO_BRANCH}"
+  git clean -fd \
+    -e .env \
+    -e docker-compose.prod.yml \
+    -e data/
 fi
 
 if [[ ! -f .env ]]; then
