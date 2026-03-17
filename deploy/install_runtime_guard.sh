@@ -6,6 +6,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/hodidit}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-hodidit-backend}"
+DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-${APP_DIR}/.deploy.lock}"
 SERVICE_PREFIX="hodidit-runtime-guard"
 LEGACY_SERVICE_PREFIX="devops-solver-runtime-guard"
 
@@ -22,8 +23,13 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/hodidit}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-hodidit-backend}"
+DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-${APP_DIR}/.deploy.lock}"
 
 if [[ ! -d "${APP_DIR}" ]]; then
+  exit 0
+fi
+
+if [[ -f "${DEPLOY_LOCK_FILE}" ]]; then
   exit 0
 fi
 
@@ -56,6 +62,7 @@ Type=oneshot
 Environment=APP_DIR=${APP_DIR}
 Environment=COMPOSE_FILE=${COMPOSE_FILE}
 Environment=BACKEND_CONTAINER=${BACKEND_CONTAINER}
+Environment=DEPLOY_LOCK_FILE=${DEPLOY_LOCK_FILE}
 ExecStart=/usr/local/bin/${SERVICE_PREFIX}.sh
 EOF
 

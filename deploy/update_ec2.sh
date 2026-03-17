@@ -7,6 +7,7 @@ REGION="${AWS_REGION:-eu-west-1}"
 INSTANCE_ID="${INSTANCE_ID:?Set EC2_INSTANCE_ID in GitHub secrets}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 APP_DIR="${APP_DIR:-/opt/hodidit}"
+DEPLOY_LOCK_FILE="${APP_DIR}/.deploy.lock"
 
 REGION="$(printf '%s' "${REGION}" | tr -d '[:space:]')"
 INSTANCE_ID="$(printf '%s' "${INSTANCE_ID}" | tr -d '[:space:]')"
@@ -145,6 +146,9 @@ if [[ ! -f .env ]]; then
   echo "Edit ${APP_DIR}/.env before starting stack."
   exit 0
 fi
+
+trap 'rm -f ${DEPLOY_LOCK_FILE}' EXIT
+: > ${DEPLOY_LOCK_FILE}
 
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d --remove-orphans

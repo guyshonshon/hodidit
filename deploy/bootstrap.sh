@@ -21,6 +21,7 @@ REPO_BRANCH="${REPO_BRANCH:-main}"
 APP_DIR="${APP_DIR:-/opt/hodidit}"
 ENV_FILE="${ENV_FILE:-.env}"
 PROD_COMPOSE_FILE="${PROD_COMPOSE_FILE:-docker-compose.prod.yml}"
+DEPLOY_LOCK_FILE="${APP_DIR}/.deploy.lock"
 
 [[ -f "$ENV_FILE" ]] || { echo "ERROR: $ENV_FILE not found." >&2; exit 1; }
 [[ -f "$PROD_COMPOSE_FILE" ]] || { echo "ERROR: $PROD_COMPOSE_FILE not found." >&2; exit 1; }
@@ -207,6 +208,8 @@ PHASE3=$(cat <<SCRIPT
 set -euo pipefail
 
 cd ${APP_DIR}
+trap 'rm -f ${DEPLOY_LOCK_FILE}' EXIT
+: > ${DEPLOY_LOCK_FILE}
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
 if [[ -x deploy/install_runtime_guard.sh ]]; then

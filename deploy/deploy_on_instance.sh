@@ -10,6 +10,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/hodidit}"
 REPO_URL="${REPO_URL:-}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
+DEPLOY_LOCK_FILE="${APP_DIR}/.deploy.lock"
 
 mkdir -p "${APP_DIR}"
 cd "${APP_DIR}"
@@ -38,6 +39,9 @@ if [[ ! -f .env ]]; then
   echo "Edit ${APP_DIR}/.env before starting stack."
   exit 0
 fi
+
+trap 'rm -f "${DEPLOY_LOCK_FILE}"' EXIT
+: > "${DEPLOY_LOCK_FILE}"
 
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
