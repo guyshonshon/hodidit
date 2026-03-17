@@ -190,7 +190,7 @@ export function Intro() {
                     }}>
                       it
                     </span>
-                    {phase === "typing" && <Cursor visible />}
+                    {phase === "name" && <Cursor visible />}
                   </div>
                   <p className="font-mono" style={{
                     fontSize: 13, color: "rgba(220,230,255,0.4)",
