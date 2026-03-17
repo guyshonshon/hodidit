@@ -1,8 +1,8 @@
-# DevOps Solver
+# hoDIDit
 
 > AI-forged DevOps lab solutions, with clean walkthroughs and a live sandbox.
 
-DevOps Solver discovers labs, solves them with AI, and presents them as step-by-step guides you can replay and test.
+Hodidit discovers labs, solves them with AI, and presents them as step-by-step guides you can replay and test.
 
 Built for the [DevSecOps-22](https://hothaifa96.github.io/DevSecOps22/) course.
 
