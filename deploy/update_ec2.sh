@@ -117,14 +117,42 @@ if [[ "$PING" != "Online" ]]; then
   fi
 fi
 
-# Build remote script (variables expanded locally before sending)
-# SSM runs with /bin/sh — re-exec with bash for pipefail + [[ support
+# Build remote script (variables expanded locally before sending).
+# Keep the deploy logic inline so a stale copy on the instance cannot block updates.
 REMOTE=$(cat <<SCRIPT
 [ -n "\$BASH_VERSION" ] || exec /bin/bash "\$0" "\$@"
 export HOME=/root
 git config --global --add safe.directory ${APP_DIR} 2>/dev/null || true
+mkdir -p ${APP_DIR}
 cd ${APP_DIR}
-APP_DIR=${APP_DIR} REPO_BRANCH=${REPO_BRANCH} ./deploy/deploy_on_instance.sh
+
+if [[ ! -d .git ]]; then
+  echo "ERROR: ${APP_DIR} is not a git checkout. Run deploy/bootstrap.sh first." >&2
+  exit 1
+fi
+
+git fetch --prune origin
+git checkout -f ${REPO_BRANCH}
+git reset --hard origin/${REPO_BRANCH}
+git clean -fd \
+  -e .env \
+  -e docker-compose.prod.yml \
+  -e data/
+
+if [[ ! -f .env ]]; then
+  cp .env.example .env
+  echo "Created .env from .env.example"
+  echo "Edit ${APP_DIR}/.env before starting stack."
+  exit 0
+fi
+
+docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+if [[ -x deploy/install_runtime_guard.sh ]]; then
+  APP_DIR=${APP_DIR} ./deploy/install_runtime_guard.sh
+fi
+
+docker compose -f docker-compose.prod.yml ps
 SCRIPT
 )
 
