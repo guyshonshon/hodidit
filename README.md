@@ -56,10 +56,6 @@ For hot-reload development:
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-Default local endpoints:
-
-- Frontend: `http://localhost:3000` (or `5173` in dev mode)
-- Backend API: `http://localhost:8000`
 
 ---
 
