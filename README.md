@@ -1,7 +1,7 @@
 # hoDIDit
 
 [![Build & Deploy](https://github.com/guyshonshon/hodidit/actions/workflows/deploy.yml/badge.svg)](https://github.com/guyshonshon/hodidit/actions/workflows/deploy.yml)
-![Healthcheck](https://img.shields.io/badge/healthcheck-/health-2ea44f)
+[![Health](https://img.shields.io/website?url=https%3A%2F%2Fdevops.shonshon.com%2Fhealth&up_message=healthy&down_message=down&label=health)](https://devops.shonshon.com/health)
 ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/frontend-React-61DAFB?logo=react&logoColor=061a23)
 ![Docker Compose](https://img.shields.io/badge/runtime-Docker%20Compose-2496ED?logo=docker&logoColor=white)
