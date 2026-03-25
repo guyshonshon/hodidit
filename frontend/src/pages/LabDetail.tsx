@@ -374,7 +374,7 @@ export function LabDetail() {
             {tab === "solution" && (
               <motion.div key="solution" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
                 {solution && isSolved ? (
-                  <SolutionPanel solution={solution} cfg={cfg} questions={lab.questions} />
+                  <SolutionPanel solution={solution} cfg={cfg} questions={lab.questions} githubUrl={lab.github_url} />
                 ) : solving ? (
                   <SolvingPlaceholder cfg={cfg} solveLog={solution?.solve_log} />
                 ) : (
@@ -469,10 +469,11 @@ export function LabDetail() {
 
 type SolutionView = "list" | "walkthrough";
 
-function SolutionPanel({ solution, cfg, questions }: {
+function SolutionPanel({ solution, cfg, questions, githubUrl }: {
   solution: Solution;
   cfg: { primary: string; text: string; bg: string; border: string; glow?: string };
   questions: Question[];
+  githubUrl?: string | null;
 }) {
   const [view, setView] = useState<SolutionView>("list");
   const stepCount = solution.steps.length;
@@ -546,7 +547,7 @@ function SolutionPanel({ solution, cfg, questions }: {
       <AnimatePresence mode="wait">
         {view === "list" ? (
           <motion.div key="list" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-            <SolutionStepList steps={solution.steps} questions={questions} githubUrl={lab.github_url} />
+            <SolutionStepList steps={solution.steps} questions={questions} githubUrl={githubUrl} />
           </motion.div>
         ) : (
           <motion.div key="walkthrough" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
