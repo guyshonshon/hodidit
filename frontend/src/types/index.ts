@@ -28,6 +28,8 @@ export interface Lab {
   subcategory: string | null;
   /** Canonical source URL. */
   url: string;
+  /** GitHub blob URL for the lab's source .md file in the target course repo. */
+  github_url: string | null;
   /** True when lab requires or used dynamic content generation. */
   is_dynamic: boolean;
   /** Topic inferred by the AI from exercise content (may refine `category`). */
@@ -71,6 +73,13 @@ export interface SolutionStep {
   timestamp?: string;
   /** Which question number this step answers (1-indexed, set by AI). */
   question_ref?: number;
+}
+
+export interface LastSolvedLab {
+  slug: string;
+  title: string;
+  github_url: string | null;
+  solved_at: string;
 }
 
 export interface Solution {

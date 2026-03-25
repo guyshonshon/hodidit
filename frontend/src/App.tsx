@@ -12,6 +12,8 @@ const queryClient = new QueryClient({
 });
 
 const BUILD = import.meta.env.VITE_BUILD_NUMBER;
+const COMMIT = import.meta.env.VITE_COMMIT_SHA as string | undefined;
+const APP_REPO = "guyshonshon/hodidit";
 
 function MainLayout() {
   return (
@@ -25,8 +27,22 @@ function MainLayout() {
           textAlign: "center", padding: "18px 0 14px",
           fontSize: "10px", color: "rgba(74,96,122,0.45)",
           letterSpacing: "0.06em",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
         }}>
-          build #{BUILD}
+          <span>build #{BUILD}</span>
+          {COMMIT && COMMIT !== "dev" && (
+            <>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <a
+                href={`https://github.com/${APP_REPO}/commit/${COMMIT}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "rgba(74,96,122,0.45)", textDecoration: "none" }}
+              >
+                {COMMIT.slice(0, 7)}
+              </a>
+            </>
+          )}
         </footer>
       )}
     </div>

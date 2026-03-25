@@ -546,7 +546,7 @@ function SolutionPanel({ solution, cfg, questions }: {
       <AnimatePresence mode="wait">
         {view === "list" ? (
           <motion.div key="list" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-            <SolutionStepList steps={solution.steps} questions={questions} />
+            <SolutionStepList steps={solution.steps} questions={questions} githubUrl={lab.github_url} />
           </motion.div>
         ) : (
           <motion.div key="walkthrough" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>

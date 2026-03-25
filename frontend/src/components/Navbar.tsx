@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { labsApi } from "../lib/api";
+
+const COMMIT = import.meta.env.VITE_COMMIT_SHA as string | undefined;
+const BUILD = import.meta.env.VITE_BUILD_NUMBER as string | undefined;
+// GitHub repo for the hodidit app itself (used for commit links)
+const APP_REPO = "guyshonshon/hodidit";
 
 export function Navbar() {
   const { pathname } = useLocation();
@@ -11,6 +18,15 @@ export function Navbar() {
     window.addEventListener("resize", fn);
     return () => window.removeEventListener("resize", fn);
   }, []);
+
+  const { data: lastSolved } = useQuery({
+    queryKey: ["last-solved"],
+    queryFn: labsApi.lastSolved,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const showBuildInfo = COMMIT && COMMIT !== "dev" && BUILD && BUILD !== "dev";
 
   return (
     <header style={{
@@ -56,18 +72,39 @@ export function Navbar() {
           ))}
         </nav>
 
-        <div className="font-mono" style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "10px", color: "#4a607a" }}>
-          {import.meta.env.VITE_BUILD_NUMBER && import.meta.env.VITE_BUILD_NUMBER !== "dev" && (
-            <span style={{ opacity: 0.6 }}>#{import.meta.env.VITE_BUILD_NUMBER}</span>
+        <div className="font-mono" style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "10px", color: "#4a607a" }}>
+          {showBuildInfo ? (
+            <>
+              {/* Commit SHA — links to GitHub commit */}
+              <a
+                href={`https://github.com/${APP_REPO}/commit/${COMMIT}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#4a607a", opacity: 0.7, textDecoration: "none", fontFamily: "monospace" }}
+              >
+                {COMMIT!.slice(0, 7)}
+              </a>
+              {/* Last solved lab — internal link */}
+              {lastSolved && (
+                <>
+                  <span style={{ opacity: 0.35 }}>·</span>
+                  <Link
+                    to={`/labs/${lastSolved.slug}`}
+                    style={{
+                      color: "#60a5fa", opacity: 0.75, textDecoration: "none",
+                      maxWidth: isMobile ? "80px" : "140px",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {lastSolved.title}
+                  </Link>
+                </>
+              )}
+            </>
+          ) : (
+            /* Fallback when no build info: keep a subtle indicator */
+            <span style={{ opacity: 0.4 }}>dev</span>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-            <motion.span
-              style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }}
-              animate={{ opacity: [1, 0.35, 1] }}
-              transition={{ duration: 2.5, repeat: Infinity }}
-            />
-            LIVE
-          </div>
         </div>
       </div>
     </header>

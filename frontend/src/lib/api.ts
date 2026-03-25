@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Lab, LabDetail, Solution } from "../types";
+import { Lab, LabDetail, LastSolvedLab, Solution } from "../types";
 
 const api = axios.create({
   baseURL: "/api",
@@ -15,6 +15,7 @@ export const configApi = {
 
 export const labsApi = {
   list: (): Promise<Lab[]> => api.get("/labs/").then((r) => r.data),
+  lastSolved: (): Promise<LastSolvedLab | null> => api.get("/labs/last-solved").then((r) => r.data),
   get: (slug: string): Promise<LabDetail> => api.get(`/labs/${slug}`).then((r) => r.data),
   // force=true bypasses the cache and regenerates with AI; pin required when REFORGE_PIN is set server-side
   solve: (slug: string, execute = false, force = false, pin = ""): Promise<{ message: string; solution: Solution }> =>

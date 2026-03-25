@@ -151,10 +151,13 @@ trap 'rm -f ${DEPLOY_LOCK_FILE}' EXIT
 : > ${DEPLOY_LOCK_FILE}
 
 BUILD_NUMBER=\$(git rev-list --count HEAD 2>/dev/null || echo "0")
-export BUILD_NUMBER
-echo "Build number: \${BUILD_NUMBER}"
+COMMIT_SHA=\$(git rev-parse HEAD 2>/dev/null || echo "dev")
+export BUILD_NUMBER COMMIT_SHA
+echo "Build number: \${BUILD_NUMBER} commit: \${COMMIT_SHA}"
 
-docker compose -f docker-compose.prod.yml build --build-arg "VITE_BUILD_NUMBER=\${BUILD_NUMBER}"
+docker compose -f docker-compose.prod.yml build \
+  --build-arg "VITE_BUILD_NUMBER=\${BUILD_NUMBER}" \
+  --build-arg "VITE_COMMIT_SHA=\${COMMIT_SHA}"
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
 if [[ -x deploy/install_runtime_guard.sh ]]; then

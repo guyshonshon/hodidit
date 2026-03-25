@@ -42,6 +42,28 @@ router = APIRouter(prefix="/labs", tags=["labs"])
 
 # ── List / Get ─────────────────────────────────────────────────────────────────
 
+@router.get("/last-solved")
+async def last_solved(session: Session = Depends(get_session)):
+    """Return the most recently solved lab (slug, title, github_url, solved_at)."""
+    sol = session.exec(
+        select(Solution)
+        .where(Solution.steps_json != "[]")
+        .where(Solution.steps_json != "")
+        .order_by(Solution.solved_at.desc())
+    ).first()
+    if not sol or not sol.solved_at:
+        return None
+    lab = session.exec(select(Lab).where(Lab.slug == sol.lab_slug)).first()
+    if not lab:
+        return None
+    return {
+        "slug": lab.slug,
+        "title": lab.title,
+        "github_url": _lab_github_url(lab),
+        "solved_at": sol.solved_at.isoformat(),
+    }
+
+
 @router.get("/")
 async def list_labs(session: Session = Depends(get_session)):
     labs = session.exec(select(Lab)).all()
@@ -58,6 +80,7 @@ async def list_labs(session: Session = Depends(get_session)):
             "category": lab.category,
             "subcategory": lab.subcategory,
             "url": lab.url,
+            "github_url": _lab_github_url(lab),
             "is_dynamic": lab.is_dynamic,
             "ai_topic": lab.ai_topic,
             "solved": has_steps,
@@ -84,6 +107,7 @@ async def get_lab(slug: str, session: Session = Depends(get_session)):
         "category": lab.category,
         "subcategory": lab.subcategory,
         "url": lab.url,
+        "github_url": _lab_github_url(lab),
         "is_dynamic": lab.is_dynamic,
         "ai_topic": lab.ai_topic,
         "content": lab.content,
@@ -496,6 +520,18 @@ async def sync_labs(request: Request, body: SyncRequest = SyncRequest(), session
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _lab_github_url(lab: Lab) -> str | None:
+    """Return the GitHub blob URL for the lab's source file in the target repo."""
+    base = settings.target_site_url.rstrip("/")
+    repo = settings.target_github_repo
+    branch = settings.target_github_branch
+    if not repo or not lab.url.startswith(base):
+        return None
+    path = lab.url[len(base):].strip("/")
+    ext = ".html" if path.startswith("homeworks/") else ".md"
+    return f"https://github.com/{repo}/blob/{branch}/{path}{ext}"
+
 
 def _solution_status(sol, has_steps: bool) -> str:
     """Return a clean, simplified status for the UI."""
