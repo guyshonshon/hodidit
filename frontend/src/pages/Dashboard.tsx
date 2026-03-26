@@ -62,6 +62,13 @@ export function Dashboard() {
     staleTime: Infinity,
   });
 
+  const { data: meta } = useQuery({
+    queryKey: ["meta"],
+    queryFn: configApi.meta,
+    staleTime: 600_000,
+    retry: false,
+  });
+
   const total = labs.length;
   const solved = labs.filter(l => l.solved).length;
   const solving = labs.filter(l => l.solution_status === "solving").length;
@@ -77,11 +84,11 @@ export function Dashboard() {
     });
   }, [isLoading, total, solved]);
 
-  // Recent activity: last 6 solved labs sorted by solved_at
+  // Last solved lab
   const recentlySolved = [...labs]
     .filter(l => l.solved && l.solved_at)
     .sort((a, b) => new Date(b.solved_at!).getTime() - new Date(a.solved_at!).getTime())
-    .slice(0, 6);
+    .slice(0, 1);
 
   // Category breakdown
   const categories = [...new Set(labs.map(l => l.category))];
@@ -254,9 +261,31 @@ export function Dashboard() {
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.18 }}
             >
-              <SectionLabel>Recently Solved</SectionLabel>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <p className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", letterSpacing: "0.25em", textTransform: "uppercase" }}>Last Solved</p>
+                {meta?.target_repo && (
+                  <a
+                    href={`https://github.com/${meta.target_repo}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      fontSize: 9, color: "var(--text-3)", textDecoration: "none",
+                      padding: "3px 8px", borderRadius: 4,
+                      border: "1px solid var(--border)",
+                      transition: "color 0.15s, border-color 0.15s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(59,130,246,0.35)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-3)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                    {meta.target_repo.split("/")[1]}
+                  </a>
+                )}
+              </div>
               {isLoading ? (
-                <SkeletonList count={5} />
+                <SkeletonList count={1} />
               ) : recentlySolved.length === 0 ? (
                 <div className="font-mono" style={{
                   padding: "32px 20px", textAlign: "center",

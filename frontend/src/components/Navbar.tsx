@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { configApi, labsApi } from "../lib/api";
+import { labsApi } from "../lib/api";
 
 const BUILD = import.meta.env.VITE_BUILD_NUMBER as string | undefined;
 
@@ -16,22 +16,12 @@ export function Navbar() {
     return () => window.removeEventListener("resize", fn);
   }, []);
 
-  const { data: meta } = useQuery({
-    queryKey: ["meta"],
-    queryFn: configApi.meta,
-    staleTime: 600_000,  // 10 min — matches server cache TTL
-    retry: false,
-  });
-
   const { data: lastSolved } = useQuery({
     queryKey: ["last-solved"],
     queryFn: labsApi.lastSolved,
     staleTime: 60_000,
     retry: false,
   });
-
-  const targetCommit = meta?.target_commit;
-  const targetRepo = meta?.target_repo;
 
   return (
     <header style={{
@@ -82,26 +72,15 @@ export function Navbar() {
           {BUILD && BUILD !== "dev" && (
             <span style={{ opacity: 0.55 }}>#{BUILD}</span>
           )}
-          {/* Target course repo commit SHA */}
-          {targetCommit && targetRepo && (
-            <a
-              href={`https://github.com/${targetRepo}/commit/${targetCommit}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#4a607a", opacity: 0.7, textDecoration: "none", fontFamily: "monospace" }}
-            >
-              {targetCommit.slice(0, 7)}
-            </a>
-          )}
           {/* Last solved lab — internal link */}
           {lastSolved && (
             <>
-              {targetCommit && <span style={{ opacity: 0.35 }}>·</span>}
+              {BUILD && BUILD !== "dev" && <span style={{ opacity: 0.35 }}>·</span>}
               <Link
                 to={`/labs/${lastSolved.slug}`}
                 style={{
                   color: "#60a5fa", opacity: 0.75, textDecoration: "none",
-                  maxWidth: isMobile ? "80px" : "140px",
+                  maxWidth: isMobile ? "80px" : "160px",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}
               >
