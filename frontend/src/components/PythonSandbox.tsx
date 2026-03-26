@@ -40,8 +40,10 @@ function extractConstVars(code: string): SandboxVar[] {
       !seen.has(line.variable)
     ) {
       const val = line.valueExpr.trim();
-      // Only expose simple literals so we don't show complex expressions
-      if (/^(True|False|None|-?\d+(\.\d+)?([eE][+-]?\d+)?|"[^"]*"|'[^']*')$/.test(val)) {
+      // Expose simple scalars, plus list/tuple literals
+      const isScalar = /^(True|False|None|-?\d+(\.\d+)?([eE][+-]?\d+)?|"[^"]*"|'[^']*')$/.test(val);
+      const isCollection = /^(\[.*\]|\(.*\))$/.test(val);
+      if (isScalar || isCollection) {
         seen.add(line.variable);
         vars.push({ name: line.variable, value: val, kind: 'const' });
       }

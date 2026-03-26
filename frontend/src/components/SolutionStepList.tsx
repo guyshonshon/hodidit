@@ -337,6 +337,7 @@ export function SolutionStepList({ steps, questions = [], githubUrl }: Props) {
   }
 
   const hasQuestionRefs = steps.some(s => s.question_ref != null);
+  const hasCodeSteps = steps.some(s => s.type === 'code');
   const groups = groupByQuestion(steps);
   const questionMap = new Map(questions.map(q => [q.number, q]));
 
@@ -402,6 +403,19 @@ export function SolutionStepList({ steps, questions = [], githubUrl }: Props) {
             </div>
           );
         })}
+
+        {/* No sandbox notice */}
+        {!hasCodeSteps && (
+          <div className="font-mono" style={{
+            marginTop: 24, padding: '10px 14px',
+            background: 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.14)',
+            borderRadius: 6, fontSize: 10, color: 'var(--text-3)',
+            display: 'flex', alignItems: 'center', gap: 7,
+          }}>
+            <span style={{ opacity: 0.5 }}>⬡</span>
+            No sandbox available for this solution — sandbox runs Python code steps only
+          </div>
+        )}
       </div>
     </TooltipProvider>
   );

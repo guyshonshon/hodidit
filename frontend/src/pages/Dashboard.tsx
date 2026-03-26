@@ -1,16 +1,21 @@
-import { useRef, useEffect, useState } from "react";
+/**
+ * Dashboard — overview / status page.
+ *
+ * Distinct from Labs (browse): shows progress at a glance, the live solve
+ * queue, per-category completion, and a recent-activity feed.
+ * No lab grid — use Labs for that.
+ */
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { gsap } from "gsap";
-import { Clock, RefreshCw } from "lucide-react";
+import { Clock, RefreshCw, ArrowRight, CheckCircle2 } from "lucide-react";
 import { labsApi, configApi } from "../lib/api";
 import { toast } from "../components/ui/Toaster";
-import { LabCard } from "../components/LabCard";
-import { CategoryChip, CATEGORY_CONFIG, getTopicConfig } from "../components/CategoryChip";
+import { getTopicConfig } from "../components/CategoryChip";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "../components/ui/Tooltip";
-import { Category, Lab } from "../types";
-
-const ALL_CATS: Category[] = ["linux", "git", "python", "homework"];
+import { Lab } from "../types";
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(() => window.innerWidth < 640);
@@ -22,15 +27,26 @@ function useIsMobile() {
   return mobile;
 }
 
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 export function Dashboard() {
-  const [filter, setFilter] = useState<string>("all");
   const isMobile = useIsMobile();
-  const countRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const navigate = useNavigate();
+  const totalRef = useRef<HTMLSpanElement>(null);
+  const solvedRef = useRef<HTMLSpanElement>(null);
 
   const { data: labs = [], isLoading } = useQuery({
     queryKey: ["labs"],
     queryFn: labsApi.list,
-    // Poll fast while any lab is unsolved or solving (auto-solve may be in flight)
     refetchInterval: (query) => {
       const data = query.state.data ?? [];
       const hasActive = data.some((l: { solution_status: string }) =>
@@ -46,174 +62,332 @@ export function Dashboard() {
     staleTime: Infinity,
   });
 
+  const { data: meta } = useQuery({
+    queryKey: ["meta"],
+    queryFn: configApi.meta,
+    staleTime: 600_000,
+    retry: false,
+  });
+
   const total = labs.length;
-  const solved = labs.filter((l) => l.solved).length;
+  const solved = labs.filter(l => l.solved).length;
+  const solving = labs.filter(l => l.solution_status === "solving").length;
   const pct = total > 0 ? Math.round((solved / total) * 100) : 0;
 
+  // Animate stat counters
   useEffect(() => {
     if (isLoading) return;
-    const targets = [total, solved];
-    const suffixes = ["", ""];
-    countRefs.current.forEach((el, i) => {
+    [{ el: totalRef.current, target: total }, { el: solvedRef.current, target: solved }].forEach(({ el, target }) => {
       if (!el) return;
       const proxy = { val: 0 };
-      gsap.to(proxy, {
-        val: targets[i], duration: 1, ease: "power2.out",
-        onUpdate: () => { if (el) el.textContent = Math.round(proxy.val) + suffixes[i]; },
-      });
+      gsap.to(proxy, { val: target, duration: 0.9, ease: "power2.out", onUpdate: () => { if (el) el.textContent = String(Math.round(proxy.val)); } });
     });
   }, [isLoading, total, solved]);
 
-  const filtered = filter === "all" ? labs : labs.filter((l) => l.category === filter);
+  // Last solved lab
+  const recentlySolved = [...labs]
+    .filter(l => l.solved && l.solved_at)
+    .sort((a, b) => new Date(b.solved_at!).getTime() - new Date(a.solved_at!).getTime())
+    .slice(0, 1);
+
+  // Category breakdown
+  const categories = [...new Set(labs.map(l => l.category))];
 
   return (
     <TooltipProvider>
-      <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <div style={{ minHeight: "100vh", background: "var(--bg)", paddingTop: "52px" }}>
+        <div style={{ maxWidth: "1100px", margin: "0 auto", padding: isMobile ? "28px 16px 48px" : "40px 40px 64px" }}>
 
-        {/* ── Hero header ─────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-          style={{ paddingTop: "80px", borderBottom: "1px solid var(--border)" }}
-        >
-          <div style={{ maxWidth: "1200px", margin: "0 auto", padding: isMobile ? "28px 16px 24px" : "44px 40px 36px" }}>
-            <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "flex-end", justifyContent: "space-between", gap: isMobile ? "16px" : "32px", flexWrap: "wrap" }}>
-
-              {/* Left */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p className="font-mono" style={{ fontSize: "10px", color: "var(--text-3)", letterSpacing: "0.3em", textTransform: "uppercase", marginBottom: "10px" }}>
-                  DevSecOps· Let's hope hodi won't find out :)
+          {/* ── Header ─────────────────────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            style={{ marginBottom: 32 }}
+          >
+            <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+              <div>
+                <p className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.3em", textTransform: "uppercase", marginBottom: 8 }}>
+                  DevSecOps22 · Overview
                 </p>
-                <h1 style={{ fontSize: isMobile ? "26px" : "34px", fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em", lineHeight: 1.1, marginBottom: "8px" }}>
-                  Dashboard
-                </h1>
-                <p className="font-mono" style={{ fontSize: "12px", color: "var(--text-2)" }}>
-                  Labs solved by AI · sourced from the <a href="https://hothaifa96.github.io/DevSecOps22/" target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline", opacity: 0.7 }}>DevSecOps22</a> course
-                </p>
-              </div>
-
-              {/* Right — stats strip */}
-              <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden", flexShrink: 0 }}>
-                {[
-                  { label: "Labs", refIdx: 0, color: "#60a5fa" },
-                  { label: "Mastered", refIdx: 1, color: "#34d399" },
-                ].map(({ label, refIdx, color }, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: isMobile ? "10px 16px" : "16px 28px",
-                      textAlign: "center",
-                      borderRight: i < 1 ? "1px solid var(--border)" : "none",
-                      background: "var(--surface)",
-                    }}
-                  >
-                    <div className="font-mono" style={{ fontSize: isMobile ? "18px" : "24px", fontWeight: 700, color, lineHeight: 1, marginBottom: "4px" }}>
-                      <span ref={(el) => { countRefs.current[refIdx] = el; }}>–</span>
-                    </div>
-                    <div className="font-mono" style={{ fontSize: "9px", color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.12em" }}>
-                      {label}
-                    </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 20, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span className="font-mono" style={{ fontSize: isMobile ? 32 : 42, fontWeight: 700, color: "#60a5fa", lineHeight: 1 }}>
+                      <span ref={solvedRef}>–</span>
+                    </span>
+                    <span className="font-mono" style={{ fontSize: 14, color: "var(--text-3)" }}>
+                      / <span ref={totalRef}>–</span> solved
+                    </span>
                   </div>
-                ))}
+                  {solving > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <motion.span
+                        style={{ width: 6, height: 6, borderRadius: "50%", background: "#fbbf24", display: "inline-block" }}
+                        animate={{ opacity: [1, 0.25, 1] }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                      />
+                      <span className="font-mono" style={{ fontSize: 11, color: "#fbbf24" }}>{solving} forging</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Progress bar */}
+                {total > 0 && (
+                  <div style={{ marginTop: 12, width: isMobile ? "100%" : 320 }}>
+                    <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: pct > 0 ? `${pct}%` : "2px" }}
+                        transition={{ duration: 1, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                        style={{ height: "100%", background: "linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981)", borderRadius: 2 }}
+                      />
+                    </div>
+                    <span className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", marginTop: 4, display: "block", letterSpacing: "0.08em" }}>
+                      {pct}% complete
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  onClick={() => navigate("/labs")}
+                  className="font-mono"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "7px 14px", fontSize: 11, fontWeight: 600,
+                    background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)",
+                    borderRadius: 7, color: "#60a5fa", cursor: "pointer",
+                  }}
+                >
+                  Browse Labs <ArrowRight size={11} />
+                </button>
+                <NextSyncIndicator labs={labs} intervalMinutes={health?.scrape_interval_minutes ?? 60} />
               </div>
             </div>
+          </motion.div>
 
-            {/* Progress bar */}
-            {total > 0 && (
-              <div style={{ marginTop: "28px" }}>
-                <div style={{ height: "4px", background: "rgba(255,255,255,0.07)", borderRadius: "2px", overflow: "hidden" }}>
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: pct > 0 ? `${pct}%` : "2px" }}
-                    transition={{ duration: 1, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                    style={{ height: "100%", background: "linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981)", borderRadius: "2px" }}
-                  />
-                </div>
-                <div className="font-mono" style={{ marginTop: 5, fontSize: 9, color: "var(--text-3)", letterSpacing: "0.1em" }}>
-                  {solved}/{total} solved
-                </div>
-              </div>
+          {/* ── Solving queue ───────────────────────────────────────── */}
+          <AnimatePresence>
+            {!isLoading && labs.some(l => l.solution_status === "solving" || l.solution_status === "unsolved") && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, height: 0 }}
+                style={{ marginBottom: 28 }}
+              >
+                <SolvingQueue labs={labs} />
+              </motion.div>
             )}
-          </div>
-        </motion.div>
+          </AnimatePresence>
 
-        {/* ── Solving queue ────────────────────────────────── */}
-        {!isLoading && labs.some(l => l.solution_status === "solving" || l.solution_status === "unsolved") && (
-          <div style={{ maxWidth: "1200px", margin: "0 auto", padding: isMobile ? "16px 16px 0" : "20px 40px 0" }}>
-            <SolvingQueue labs={labs} />
-          </div>
-        )}
+          {/* ── Main two-column layout ──────────────────────────────── */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gap: 20,
+            alignItems: "start",
+          }}>
 
-        {/* ── Category breakdown ──────────────────────────── */}
-        {!isLoading && total > 0 && (
-          <div style={{ maxWidth: "1200px", margin: "0 auto", padding: isMobile ? "12px 16px 0" : "12px 40px 0" }}>
-            <CategoryBreakdown labs={labs} activeFilter={filter} onFilterChange={setFilter} isMobile={isMobile} />
-          </div>
-        )}
-
-        {/* ── Filter row ──────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
-          style={{ maxWidth: "1200px", margin: "0 auto", padding: isMobile ? "12px 16px" : "20px 40px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-            {/* All button */}
-            <button
-              onClick={() => setFilter("all")}
-              className="font-mono"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: "6px",
-                padding: "5px 12px", fontSize: "11px", fontWeight: 500, borderRadius: "6px",
-                border: `1px solid ${filter === "all" ? "rgba(59,130,246,0.35)" : "var(--border)"}`,
-                background: filter === "all" ? "rgba(59,130,246,0.1)" : "transparent",
-                color: filter === "all" ? "#60a5fa" : "var(--text-2)",
-                cursor: "pointer", transition: "all 0.15s",
-                WebkitTapHighlightColor: "transparent",
-              }}
+            {/* ── Category progress ──────────────────────────────────── */}
+            <motion.section
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
             >
-              All
-              <span style={{ fontSize: "10px", opacity: 0.6 }}>{total}</span>
-            </button>
+              <SectionLabel>Topics</SectionLabel>
+              {isLoading ? (
+                <SkeletonList count={4} />
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {categories.map((cat, i) => {
+                    const cfg = getTopicConfig(cat);
+                    const catLabs = labs.filter(l => l.category === cat);
+                    const catSolved = catLabs.filter(l => l.solved).length;
+                    const catSolving = catLabs.filter(l => l.solution_status === "solving").length;
+                    const catPct = catLabs.length > 0 ? Math.round((catSolved / catLabs.length) * 100) : 0;
 
-            {/* Category chips — no Tooltip wrapper so touch events fire immediately */}
-            {ALL_CATS.map((cat) => (
-              <CategoryChip key={cat} category={cat} active={filter === cat} onClick={() => setFilter(filter === cat ? "all" : cat)} />
-            ))}
+                    return (
+                      <motion.div
+                        key={cat}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.1 + i * 0.05 }}
+                        onClick={() => navigate(`/labs?cat=${cat}`)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "11px 14px",
+                          background: "var(--surface)", border: `1px solid var(--border)`,
+                          borderLeft: `3px solid ${cfg.primary}`,
+                          borderRadius: 8, cursor: "pointer",
+                          transition: "background 0.15s, border-color 0.15s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = cfg.bg; e.currentTarget.style.borderColor = cfg.border; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.borderLeftColor = cfg.primary; }}
+                      >
+                        <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: cfg.text, textTransform: "uppercase", letterSpacing: "0.08em", minWidth: 60 }}>
+                          {cfg.label !== "Topic" ? cfg.label : cat}
+                        </span>
+
+                        <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${catPct}%` }}
+                            transition={{ duration: 0.7, delay: 0.15 + i * 0.07, ease: [0.16, 1, 0.3, 1] }}
+                            style={{ height: "100%", background: cfg.primary, borderRadius: 2 }}
+                          />
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          {catSolving > 0 && (
+                            <motion.span
+                              style={{ width: 5, height: 5, borderRadius: "50%", background: "#fbbf24", display: "inline-block" }}
+                              animate={{ opacity: [1, 0.3, 1] }}
+                              transition={{ duration: 1, repeat: Infinity }}
+                            />
+                          )}
+                          <span className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", minWidth: 52, textAlign: "right" }}>
+                            {catSolved}/{catLabs.length}
+                          </span>
+                          <span className="font-mono" style={{ fontSize: 10, color: cfg.text, minWidth: 28, textAlign: "right" }}>{catPct}%</span>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.section>
+
+            {/* ── Recent activity ─────────────────────────────────────── */}
+            <motion.section
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.18 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <p className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", letterSpacing: "0.25em", textTransform: "uppercase" }}>Last Solved</p>
+                {meta?.target_repo && (
+                  <a
+                    href={`https://github.com/${meta.target_repo}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      fontSize: 9, color: "var(--text-3)", textDecoration: "none",
+                      padding: "3px 8px", borderRadius: 4,
+                      border: "1px solid var(--border)",
+                      transition: "color 0.15s, border-color 0.15s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(59,130,246,0.35)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-3)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                    {meta.target_repo.split("/")[1]}
+                  </a>
+                )}
+              </div>
+              {isLoading ? (
+                <SkeletonList count={1} />
+              ) : recentlySolved.length === 0 ? (
+                <div className="font-mono" style={{
+                  padding: "32px 20px", textAlign: "center",
+                  background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
+                  fontSize: 12, color: "var(--text-3)",
+                }}>
+                  No labs solved yet
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                  {recentlySolved.map((lab, i) => {
+                    const cfg = getTopicConfig(lab.ai_topic ?? lab.category);
+                    return (
+                      <motion.div
+                        key={lab.slug}
+                        initial={{ opacity: 0, x: 8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.18 + i * 0.05 }}
+                        onClick={() => navigate(`/labs/${lab.slug}`)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "10px 14px",
+                          cursor: "pointer",
+                          borderBottom: i < recentlySolved.length - 1 ? "1px solid var(--border)" : "none",
+                          transition: "background 0.12s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.025)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <CheckCircle2 size={13} style={{ color: cfg.primary, flexShrink: 0, opacity: 0.75 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {lab.title}
+                          </div>
+                          <div className="font-mono" style={{ fontSize: 9, color: cfg.text, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 1 }}>
+                            {cfg.label !== "Topic" ? cfg.label : lab.category}
+                            {lab.subcategory && <span style={{ color: "var(--text-3)", marginLeft: 5 }}>· {lab.subcategory}</span>}
+                          </div>
+                        </div>
+                        <span className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", flexShrink: 0 }}>
+                          {timeAgo(lab.solved_at!)}
+                        </span>
+                      </motion.div>
+                    );
+                  })}
+
+                  <div
+                    onClick={() => navigate("/labs")}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      padding: "9px 14px",
+                      cursor: "pointer", borderTop: "1px solid var(--border)",
+                      transition: "background 0.12s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.02)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span className="font-mono" style={{ fontSize: 10, color: "var(--text-3)" }}>View all labs</span>
+                    <ArrowRight size={10} style={{ color: "var(--text-3)" }} />
+                  </div>
+                </div>
+              )}
+            </motion.section>
+
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <NextSyncIndicator labs={labs} intervalMinutes={health?.scrape_interval_minutes ?? 60} />
+          {/* ── Footer ───────────────────────────────────────────────── */}
+          <div className="font-mono" style={{ marginTop: 48, textAlign: "center", fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em" }}>
+            Crafted by Guy Shonshon · {new Date().getFullYear()}
           </div>
-        </motion.div>
 
-        {/* ── Lab grid ────────────────────────────────────── */}
-        <div style={{ maxWidth: "1200px", margin: "0 auto", padding: isMobile ? "4px 16px 48px" : "4px 40px 64px" }}>
-          {isLoading ? (
-            <SkeletonGrid />
-          ) : filtered.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: "14px" }}>
-              {filtered.map((lab, i) => <LabCard key={lab.slug} lab={lab} index={i} />)}
-            </div>
-          )}
         </div>
-
-        {/* ── Footer ───────────────────────────────────────── */}
-        <div className="font-mono" style={{
-          textAlign: "center", padding: "24px 40px 40px",
-          fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em",
-        }}>
-          Crafted by Guy Shonshon · {new Date().getFullYear()} · All rights reserved
-        </div>
-
       </div>
     </TooltipProvider>
   );
 }
 
-// ── Solving queue panel ─────────────────────────────────────────────────────
+// ── Shared ────────────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", letterSpacing: "0.25em", textTransform: "uppercase", marginBottom: 10 }}>
+      {children}
+    </p>
+  );
+}
+
+function SkeletonList({ count }: { count: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <motion.div key={i}
+          style={{ height: 44, borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)" }}
+          animate={{ opacity: [0.5, 0.75, 0.5] }}
+          transition={{ duration: 1.8, repeat: Infinity, delay: i * 0.12 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Solving queue ─────────────────────────────────────────────────────────────
 
 function SolvingQueue({ labs }: { labs: Lab[] }) {
   const solving = labs.filter(l => l.solution_status === "solving");
@@ -225,22 +399,12 @@ function SolvingQueue({ labs }: { labs: Lab[] }) {
     : `AWAITING DISPATCH — ${pendingCount} lab${pendingCount !== 1 ? "s" : ""} in the queue`;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6 }}
-      style={{
-        marginBottom: 16,
-        border: "1px solid rgba(251,191,36,0.25)",
-        borderRadius: 10,
-        overflow: "hidden",
-        background: "rgba(251,191,36,0.03)",
-      }}
-    >
-      {/* Header */}
+    <div style={{
+      border: "1px solid rgba(251,191,36,0.25)", borderRadius: 10,
+      overflow: "hidden", background: "rgba(251,191,36,0.03)",
+    }}>
       <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
         borderBottom: solving.length > 0 ? "1px solid rgba(251,191,36,0.15)" : "none",
         background: "rgba(251,191,36,0.06)",
       }}>
@@ -253,36 +417,23 @@ function SolvingQueue({ labs }: { labs: Lab[] }) {
           {label}
         </span>
       </div>
-
-      {/* Only show the actively solving labs */}
       {solving.map((lab) => {
         const lines = (lab.solve_log || "").trim().split("\n").filter(Boolean);
-        const lastLine = lines.length > 0 ? lines[lines.length - 1] : "Solution is being crafted…";
+        const lastLine = lines[lines.length - 1] ?? "Solution is being crafted…";
         const isError = lastLine.includes("ERROR");
-
         return (
-          <div key={lab.slug} style={{
-            padding: "10px 16px",
-            borderBottom: "1px solid rgba(255,255,255,0.04)",
-          }}>
+          <div key={lab.slug} style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: lines.length > 1 ? 8 : 0 }}>
-              <span className="font-mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>
-                {lab.title}
-              </span>
-              <span className="font-mono" style={{
-                fontSize: 11, color: isError ? "#f87171" : "#fbbf24",
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
+              <span className="font-mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>{lab.title}</span>
+              <span className="font-mono" style={{ fontSize: 11, color: isError ? "#f87171" : "#fbbf24", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {lastLine}
               </span>
             </div>
-
             {lines.length > 0 && (
               <pre className="font-mono" style={{
                 fontSize: 10, color: "var(--text-3)", margin: 0, lineHeight: 1.7,
-                background: "rgba(0,0,0,0.2)", borderRadius: 5,
-                padding: "6px 10px", maxHeight: 120, overflowY: "auto",
-                whiteSpace: "pre-wrap", wordBreak: "break-all",
+                background: "rgba(0,0,0,0.2)", borderRadius: 5, padding: "6px 10px",
+                maxHeight: 100, overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all",
               }}>
                 {lines.join("\n")}
               </pre>
@@ -290,96 +441,11 @@ function SolvingQueue({ labs }: { labs: Lab[] }) {
           </div>
         );
       })}
-    </motion.div>
-  );
-}
-
-// ── Category breakdown strip ────────────────────────────────────────────────
-
-function CategoryBreakdown({ labs, activeFilter, onFilterChange, isMobile }: {
-  labs: Lab[];
-  activeFilter: string;
-  onFilterChange: (cat: string) => void;
-  isMobile: boolean;
-}) {
-  const categories = [...new Set(labs.map(l => l.category))];
-  const cols = isMobile ? Math.min(categories.length, 2) : Math.min(categories.length, 4);
-
-  return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: `repeat(${cols}, 1fr)`,
-      gap: isMobile ? 8 : 12, paddingBottom: 20,
-    }}>
-      {categories.map((cat, i) => {
-        const cfg = getTopicConfig(cat);
-        const catLabs = labs.filter(l => l.category === cat);
-        const solved = catLabs.filter(l => l.solution_status === "solved").length;
-        const solving = catLabs.filter(l => l.solution_status === "solving").length;
-        const pct = catLabs.length > 0 ? Math.round((solved / catLabs.length) * 100) : 0;
-        const isActive = activeFilter === cat;
-
-        return (
-          <motion.div
-            key={cat}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06, duration: 0.25 }}
-            onClick={() => onFilterChange(isActive ? "all" : cat)}
-            style={{
-              background: isActive ? cfg.bg : "rgba(255,255,255,0.02)",
-              border: `1px solid ${isActive ? cfg.border : "var(--border)"}`,
-              borderRadius: 9,
-              padding: isMobile ? "10px 12px" : "14px 16px",
-              borderLeft: `3px solid ${isActive ? cfg.primary : "transparent"}`,
-              cursor: "pointer",
-              transition: "all 0.15s",
-              WebkitTapHighlightColor: "transparent",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <span className="font-mono" style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: "0.1em",
-                textTransform: "uppercase", color: cfg.text,
-              }}>
-                {cfg.label !== "Topic" ? cfg.label : cat}
-              </span>
-            </div>
-
-            {/* Progress bar */}
-            <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, marginBottom: 8, overflow: "hidden" }}>
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${pct}%` }}
-                transition={{ duration: 0.7, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
-                style={{ height: "100%", background: cfg.primary, borderRadius: 2 }}
-              />
-            </div>
-
-            <div className="font-mono" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 10, color: "var(--text-3)" }}>
-                {solved}/{catLabs.length} solved
-              </span>
-              {solving > 0 && (
-                <span style={{ fontSize: 10, color: "#fbbf24", display: "flex", alignItems: "center", gap: 4 }}>
-                  <motion.span
-                    style={{ width: 5, height: 5, borderRadius: "50%", background: "#fbbf24", display: "inline-block" }}
-                    animate={{ opacity: [1, 0.3, 1] }}
-                    transition={{ duration: 1, repeat: Infinity }}
-                  />
-                  {solving} solving
-                </span>
-              )}
-            </div>
-          </motion.div>
-        );
-      })}
     </div>
   );
 }
 
-
-// ── PIN modal ────────────────────────────────────────────────────────────────
+// ── PIN modal ─────────────────────────────────────────────────────────────────
 
 const PIN_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "↵"];
 
@@ -388,195 +454,90 @@ function PinModal({ onSuccess, onClose, errorCount }: { onSuccess: (pin: string)
   const [shake, setShake] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // Reset and shake when parent increments errorCount (wrong PIN from backend)
   useEffect(() => {
     if (!errorCount) return;
-    setSubmitted(false);
-    setShake(true);
-    setDigits([]);
+    setSubmitted(false); setShake(true); setDigits([]);
     setTimeout(() => setShake(false), 500);
   }, [errorCount]);
 
-  const triggerShake = () => {
-    setShake(true);
-    setDigits([]);
-    setTimeout(() => setShake(false), 500);
-  };
+  const triggerShake = () => { setShake(true); setDigits([]); setTimeout(() => setShake(false), 500); };
 
   const handleKey = (k: string) => {
     if (submitted) return;
-    if (k === "⌫") {
-      setDigits((d) => d.slice(0, -1));
-    } else if (k === "↵") {
-      if (digits.length === 4) {
-        setSubmitted(true);
-        onSuccess(digits.join(""));
-      } else {
-        triggerShake();
-      }
+    if (k === "⌫") { setDigits(d => d.slice(0, -1)); }
+    else if (k === "↵") {
+      if (digits.length === 4) { setSubmitted(true); onSuccess(digits.join("")); }
+      else triggerShake();
     } else if (digits.length < 4) {
-      const next = [...digits, k];
-      setDigits(next);
-      if (next.length === 4) {
-        // auto-submit
-        setSubmitted(true);
-        onSuccess(next.join(""));
-      }
+      const next = [...digits, k]; setDigits(next);
+      if (next.length === 4) { setSubmitted(true); onSuccess(next.join("")); }
     }
   };
-
-  // Keyboard support — ref avoids stale closure over handleKey
   const handleKeyRef = useRef(handleKey);
   handleKeyRef.current = handleKey;
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
+    const h = (e: KeyboardEvent) => {
       if (e.key >= "0" && e.key <= "9") handleKeyRef.current(e.key);
       else if (e.key === "Backspace") handleKeyRef.current("⌫");
       else if (e.key === "Enter") handleKeyRef.current("↵");
       else if (e.key === "Escape") onClose();
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 9999,
-        background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-    >
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <motion.div
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
         initial={{ opacity: 0, scale: 0.9, y: 12 }}
-        animate={shake
-          ? { opacity: 1, scale: 1, y: 0, x: [0, -10, 10, -8, 8, -4, 4, 0] }
-          : { opacity: 1, scale: 1, y: 0, x: 0 }
-        }
-        transition={shake ? { duration: 0.45, ease: "easeInOut" } : { duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 16,
-          padding: "32px 28px 28px",
-          width: 280,
-          display: "flex", flexDirection: "column", alignItems: "center", gap: 24,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
-        }}
+        animate={shake ? { opacity: 1, scale: 1, y: 0, x: [0, -10, 10, -8, 8, -4, 4, 0] } : { opacity: 1, scale: 1, y: 0, x: 0 }}
+        transition={shake ? { duration: 0.45 } : { duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+        style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: "32px 28px 28px", width: 280, display: "flex", flexDirection: "column", alignItems: "center", gap: 24, boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
       >
-        {/* Header */}
         <div style={{ textAlign: "center" }}>
-          <p className="font-mono" style={{ fontSize: 9, letterSpacing: "0.3em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: 6 }}>
-            Authorization Required
-          </p>
-          <p className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-            Enter Sync PIN
-          </p>
+          <p className="font-mono" style={{ fontSize: 9, letterSpacing: "0.3em", color: "var(--text-3)", textTransform: "uppercase", marginBottom: 6 }}>Authorization Required</p>
+          <p className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Enter Sync PIN</p>
         </div>
-
-        {/* Dot indicators */}
         <div style={{ display: "flex", gap: 14 }}>
-          {[0, 1, 2, 3].map((i) => (
-            <motion.div
-              key={i}
-              animate={{ scale: digits.length === i + 1 ? [1, 1.35, 1] : 1 }}
-              transition={{ duration: 0.18 }}
-              style={{
-                width: 14, height: 14, borderRadius: "50%",
-                background: i < digits.length ? "#60a5fa" : "transparent",
-                border: `2px solid ${i < digits.length ? "#60a5fa" : "rgba(255,255,255,0.2)"}`,
-                transition: "background 0.15s, border-color 0.15s",
-              }}
+          {[0, 1, 2, 3].map(i => (
+            <motion.div key={i} animate={{ scale: digits.length === i + 1 ? [1, 1.35, 1] : 1 }} transition={{ duration: 0.18 }}
+              style={{ width: 14, height: 14, borderRadius: "50%", background: i < digits.length ? "#60a5fa" : "transparent", border: `2px solid ${i < digits.length ? "#60a5fa" : "rgba(255,255,255,0.2)"}`, transition: "background 0.15s" }}
             />
           ))}
         </div>
-
-        {/* Numpad */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, width: "100%" }}>
-          {PIN_KEYS.map((k) => {
+          {PIN_KEYS.map(k => {
             const isAction = k === "⌫" || k === "↵";
             const isEnter = k === "↵";
             return (
-              <button
-                key={k}
-                onClick={() => handleKey(k)}
-                className="font-mono"
-                style={{
-                  height: 52,
-                  borderRadius: 10,
-                  border: `1px solid ${isEnter && digits.length === 4 ? "rgba(96,165,250,0.5)" : "var(--border)"}`,
-                  background: isEnter && digits.length === 4
-                    ? "rgba(96,165,250,0.15)"
-                    : isAction
-                      ? "rgba(255,255,255,0.04)"
-                      : "var(--bg)",
-                  color: isAction ? "var(--text-2)" : "var(--text)",
-                  fontSize: isAction ? 16 : 18,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.12s",
-                  letterSpacing: isEnter ? "0" : "0",
-                }}
-              >
+              <button key={k} onClick={() => handleKey(k)} className="font-mono"
+                style={{ height: 52, borderRadius: 10, border: `1px solid ${isEnter && digits.length === 4 ? "rgba(96,165,250,0.5)" : "var(--border)"}`, background: isEnter && digits.length === 4 ? "rgba(96,165,250,0.15)" : isAction ? "rgba(255,255,255,0.04)" : "var(--bg)", color: isAction ? "var(--text-2)" : "var(--text)", fontSize: isAction ? 16 : 18, fontWeight: 600, cursor: "pointer" }}>
                 {k}
               </button>
             );
           })}
         </div>
-
-        {/* Cancel */}
-        <button
-          onClick={onClose}
-          className="font-mono"
-          style={{
-            fontSize: 10, color: "var(--text-3)", letterSpacing: "0.1em",
-            background: "none", border: "none", cursor: "pointer",
-            textTransform: "uppercase",
-          }}
-        >
-          Cancel
-        </button>
+        <button onClick={onClose} className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.1em", background: "none", border: "none", cursor: "pointer", textTransform: "uppercase" }}>Cancel</button>
       </motion.div>
     </div>
   );
 }
 
-// ── Next sync indicator ──────────────────────────────────────────────────────
+// ── Next sync indicator ───────────────────────────────────────────────────────
 
 function NextSyncIndicator({ labs, intervalMinutes }: { labs: { last_scraped?: string | null }[]; intervalMinutes: number }) {
   const qc = useQueryClient();
-  const [countdown, setCountdown] = useState<string>("");
+  const [countdown, setCountdown] = useState("");
   const [pinOpen, setPinOpen] = useState(false);
   const [pinErrorCount, setPinErrorCount] = useState(0);
 
-  // Repeating countdown: shows time remaining in the current 60-min cycle.
   useEffect(() => {
-    const lastScrapeMs = labs
-      .filter((l) => l.last_scraped)
-      .map((l) => new Date(l.last_scraped!).getTime())
-      .sort()
-      .reverse()[0];
-
-    if (!lastScrapeMs) {
-      setCountdown("—");
-      return;
-    }
-
+    const lastMs = labs.filter(l => l.last_scraped).map(l => new Date(l.last_scraped!).getTime()).sort().reverse()[0];
+    if (!lastMs) { setCountdown("—"); return; }
     const cycleMs = intervalMinutes * 60_000;
-
-    const tick = () => {
-      const elapsed = (Date.now() - lastScrapeMs) % cycleMs;
-      const remaining = cycleMs - elapsed;
-      const m = Math.floor(remaining / 60_000);
-      const s = Math.floor((remaining % 60_000) / 1000);
-      setCountdown(`${m}:${String(s).padStart(2, "0")}`);
-    };
-
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    const tick = () => { const rem = cycleMs - ((Date.now() - lastMs) % cycleMs); const m = Math.floor(rem / 60_000); const s = Math.floor((rem % 60_000) / 1000); setCountdown(`${m}:${String(s).padStart(2, "0")}`); };
+    tick(); const id = setInterval(tick, 1000); return () => clearInterval(id);
   }, [labs, intervalMinutes]);
 
   const syncMutation = useMutation({
@@ -590,89 +551,28 @@ function NextSyncIndicator({ labs, intervalMinutes }: { labs: { last_scraped?: s
     },
     onError: (err: unknown) => {
       const res = (err as { response?: { status?: number; data?: { detail?: string } } })?.response;
-      if (res?.status === 429) {
-        setPinErrorCount((n) => n + 1);
-        toast(res.data?.detail ?? "Too many attempts — try again later", "error");
-      } else if (res?.status === 403) {
-        setPinErrorCount((n) => n + 1);
-        toast("Wrong PIN — access denied", "error");
-      } else {
-        toast(`Sync failed: ${(err as Error).message}`, "error");
-      }
+      if (res?.status === 429) { setPinErrorCount(n => n + 1); toast(res.data?.detail ?? "Too many attempts", "error"); }
+      else if (res?.status === 403) { setPinErrorCount(n => n + 1); toast("Wrong PIN", "error"); }
+      else toast(`Sync failed: ${(err as Error).message}`, "error");
     },
   });
 
   const isSyncing = syncMutation.isPending;
 
-  const handlePinSuccess = (pin: string) => {
-    syncMutation.mutate(pin, {
-      onSuccess: () => setPinOpen(false),
-      // keep modal open on error so user can retry or cancel
-    });
-  };
-
   return (
     <>
-      {pinOpen && (
-        <PinModal
-          onSuccess={handlePinSuccess}
-          onClose={() => { setPinOpen(false); syncMutation.reset(); }}
-          errorCount={pinErrorCount}
-        />
-      )}
+      {pinOpen && <PinModal onSuccess={pin => syncMutation.mutate(pin, { onSuccess: () => setPinOpen(false) })} onClose={() => { setPinOpen(false); syncMutation.reset(); }} errorCount={pinErrorCount} />}
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            onClick={() => { if (!isSyncing) setPinOpen(true); }}
-            className="font-mono"
-            style={{
-              display: "flex", alignItems: "center", gap: "6px",
-              padding: "6px 12px", fontSize: "11px",
-              border: "1px solid var(--border)",
-              borderRadius: "6px", background: "transparent",
-              color: isSyncing ? "#60a5fa" : "var(--text-3)",
-              cursor: isSyncing ? "wait" : "pointer",
-              transition: "color 0.15s, border-color 0.15s",
-            }}
-          >
-            {isSyncing
-              ? <RefreshCw size={11} style={{ animation: "spin 0.9s linear infinite" }} />
-              : <Clock size={11} />}
-            <span>{isSyncing ? "syncing…" : "next sync"}</span>
-            {!isSyncing && (
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{countdown}</span>
-            )}
+          <button onClick={() => { if (!isSyncing) setPinOpen(true); }} className="font-mono"
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", fontSize: 11, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: isSyncing ? "#60a5fa" : "var(--text-3)", cursor: isSyncing ? "wait" : "pointer" }}>
+            {isSyncing ? <RefreshCw size={11} style={{ animation: "spin 0.9s linear infinite" }} /> : <Clock size={11} />}
+            <span>{isSyncing ? "syncing…" : "sync"}</span>
+            {!isSyncing && <span style={{ fontVariantNumeric: "tabular-nums" }}>{countdown}</span>}
           </button>
         </TooltipTrigger>
-        <TooltipContent>
-          {isSyncing
-            ? "Syncing labs with the course site…"
-            : `Click to sync now · auto-syncs every ${intervalMinutes} min`}
-        </TooltipContent>
+        <TooltipContent>{isSyncing ? "Syncing…" : `Click to sync now · auto-syncs every ${intervalMinutes} min`}</TooltipContent>
       </Tooltip>
     </>
-  );
-}
-
-function SkeletonGrid() {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: "14px" }}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <motion.div key={i}
-          style={{ height: "108px", borderRadius: "10px", background: "var(--surface)", border: "1px solid var(--border)" }}
-          animate={{ opacity: [0.5, 0.8, 0.5] }}
-          transition={{ duration: 1.8, repeat: Infinity, delay: i * 0.12 }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div style={{ textAlign: "center", padding: "72px 0" }}>
-      <p className="font-mono" style={{ fontSize: "13px", color: "var(--text-2)" }}>The vault is empty</p>
-      <p className="font-mono" style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "6px" }}>Summon your labs — click the sync button above</p>
-    </div>
   );
 }

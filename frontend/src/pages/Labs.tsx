@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Zap, Search } from "lucide-react";
 import { labsApi } from "../lib/api";
 import { StatusBadge } from "../components/StatusBadge";
@@ -163,7 +163,8 @@ function CategorySection({ category, labs, index }: { category: string; labs: La
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export function Labs() {
-  const [filter, setFilter] = useState<string>("all");
+  const [searchParams] = useSearchParams();
+  const [filter, setFilter] = useState<string>(searchParams.get("cat") ?? "all");
   const [search, setSearch] = useState("");
 
   const { data: labs = [], isLoading } = useQuery({
