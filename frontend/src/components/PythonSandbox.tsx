@@ -111,6 +111,22 @@ export function PythonSandbox({ step }: Props) {
   const isLoading = status !== 'idle';
   const hasVars = vars.length > 0;
 
+  // No editable variables — skip interactive sandbox
+  if (!hasVars) {
+    return (
+      <div className="font-mono" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '4px 10px', fontSize: 9,
+        color: 'var(--text-3)', opacity: 0.5,
+        border: '1px solid var(--border)', borderRadius: 5,
+        letterSpacing: '0.06em',
+      }}>
+        <Play size={8} style={{ opacity: 0.5 }} />
+        No sandbox — no interactive variables
+      </div>
+    );
+  }
+
   if (!open) {
     return (
       <button

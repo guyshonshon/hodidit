@@ -110,6 +110,9 @@ export function Dashboard() {
                 <p className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.3em", textTransform: "uppercase", marginBottom: 8 }}>
                   DevSecOps22 · Overview
                 </p>
+                <p style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 10, lineHeight: 1.6, maxWidth: 480 }}>
+                  Crawls the DevSecOps22 course, uses AI to solve each lab, runs Python steps in a sandbox, and presents clean step-by-step solutions.
+                </p>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 20, flexWrap: "wrap" }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                     <span className="font-mono" style={{ fontSize: isMobile ? 32 : 42, fontWeight: 700, color: "#60a5fa", lineHeight: 1 }}>
