@@ -38,6 +38,19 @@ function timeAgo(iso: string): string {
   return `${d}d ago`;
 }
 
+const GH_ICON = (
+  <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+      0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+      -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+      .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+      -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0
+      1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56
+      .82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07
+      -.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+  </svg>
+);
+
 export function Dashboard() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
@@ -71,6 +84,7 @@ export function Dashboard() {
 
   const total = labs.length;
   const solved = labs.filter(l => l.solved).length;
+  const unsolved = total - solved;
   const solving = labs.filter(l => l.solution_status === "solving").length;
   const pct = total > 0 ? Math.round((solved / total) * 100) : 0;
 
@@ -84,85 +98,79 @@ export function Dashboard() {
     });
   }, [isLoading, total, solved]);
 
-  // Last solved lab
   const recentlySolved = [...labs]
     .filter(l => l.solved && l.solved_at)
     .sort((a, b) => new Date(b.solved_at!).getTime() - new Date(a.solved_at!).getTime())
-    .slice(0, 1);
+    .slice(0, 5);
 
-  // Category breakdown
   const categories = [...new Set(labs.map(l => l.category))];
+
+  // Subcategory breakdown (labs / homework / lessons / …)
+  const subcatKeys = [...new Set(labs.map(l => l.subcategory ?? "other"))].sort();
+  const subcatRows = subcatKeys.map(sc => ({
+    label: sc,
+    total: labs.filter(l => (l.subcategory ?? "other") === sc).length,
+    solved: labs.filter(l => (l.subcategory ?? "other") === sc && l.solved).length,
+  }));
+
+  const STAT_CARDS = [
+    { label: "Total", value: total, color: "#60a5fa", bg: "rgba(59,130,246,0.07)", border: "rgba(59,130,246,0.18)" },
+    { label: "Solved", value: solved, color: "#34d399", bg: "rgba(52,211,153,0.07)", border: "rgba(52,211,153,0.18)" },
+    { label: "Unsolved", value: unsolved, color: unsolved > 0 ? "#fbbf24" : "var(--text-3)", bg: unsolved > 0 ? "rgba(251,191,36,0.07)" : "var(--surface)", border: unsolved > 0 ? "rgba(251,191,36,0.18)" : "var(--border)" },
+    { label: "Complete", value: `${pct}%`, color: "#a78bfa", bg: "rgba(139,92,246,0.07)", border: "rgba(139,92,246,0.18)" },
+  ];
 
   return (
     <TooltipProvider>
       <div style={{ minHeight: "100vh", background: "var(--bg)", paddingTop: "52px" }}>
-        <div style={{ maxWidth: "1100px", margin: "0 auto", padding: isMobile ? "28px 16px 48px" : "40px 40px 64px" }}>
+        <div style={{ maxWidth: "1400px", margin: "0 auto", padding: isMobile ? "28px 16px 48px" : "40px 48px 64px" }}>
 
           {/* ── Header ─────────────────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            style={{ marginBottom: 32 }}
+            style={{ marginBottom: 28 }}
           >
             <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
               <div>
-                <p className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.3em", textTransform: "uppercase", marginBottom: 8 }}>
+                <p className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.3em", textTransform: "uppercase", marginBottom: 10 }}>
                   DevSecOps22 · Overview
                 </p>
-                <p style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 10, lineHeight: 1.6, maxWidth: 480 }}>
-                  Crawls the DevSecOps22 course, uses AI to solve each lab, runs Python steps in a sandbox, and presents clean step-by-step solutions.
-                </p>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 20, flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                    <span className="font-mono" style={{ fontSize: isMobile ? 32 : 42, fontWeight: 700, color: "#60a5fa", lineHeight: 1 }}>
-                      <span ref={solvedRef}>–</span>
-                    </span>
-                    <span className="font-mono" style={{ fontSize: 14, color: "var(--text-3)" }}>
-                      / <span ref={totalRef}>–</span> solved
-                    </span>
-                  </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
+                  <span className="font-mono" style={{ fontSize: isMobile ? 36 : 48, fontWeight: 700, color: "#60a5fa", lineHeight: 1 }}>
+                    <span ref={solvedRef}>–</span>
+                  </span>
+                  <span className="font-mono" style={{ fontSize: 15, color: "var(--text-3)" }}>
+                    / <span ref={totalRef}>–</span> solved
+                  </span>
                   {solving > 0 && (
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <motion.span
-                        style={{ width: 6, height: 6, borderRadius: "50%", background: "#fbbf24", display: "inline-block" }}
-                        animate={{ opacity: [1, 0.25, 1] }}
-                        transition={{ duration: 1, repeat: Infinity }}
-                      />
+                      <motion.span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fbbf24", display: "inline-block" }}
+                        animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1, repeat: Infinity }} />
                       <span className="font-mono" style={{ fontSize: 11, color: "#fbbf24" }}>{solving} forging</span>
                     </div>
                   )}
                 </div>
-
-                {/* Progress bar */}
                 {total > 0 && (
-                  <div style={{ marginTop: 12, width: isMobile ? "100%" : 320 }}>
-                    <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ marginTop: 14, width: isMobile ? "100%" : 400 }}>
+                    <div style={{ height: 5, background: "rgba(255,255,255,0.07)", borderRadius: 3, overflow: "hidden" }}>
                       <motion.div
                         initial={{ width: 0 }}
-                        animate={{ width: pct > 0 ? `${pct}%` : "2px" }}
-                        transition={{ duration: 1, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                        style={{ height: "100%", background: "linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981)", borderRadius: 2 }}
+                        animate={{ width: pct > 0 ? `${pct}%` : "3px" }}
+                        transition={{ duration: 1.1, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                        style={{ height: "100%", background: "linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981)", borderRadius: 3 }}
                       />
                     </div>
-                    <span className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", marginTop: 4, display: "block", letterSpacing: "0.08em" }}>
+                    <span className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", marginTop: 5, display: "block", letterSpacing: "0.08em" }}>
                       {pct}% complete
                     </span>
                   </div>
                 )}
               </div>
-
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button
-                  onClick={() => navigate("/labs")}
-                  className="font-mono"
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    padding: "7px 14px", fontSize: 11, fontWeight: 600,
-                    background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)",
-                    borderRadius: 7, color: "#60a5fa", cursor: "pointer",
-                  }}
-                >
+                <button onClick={() => navigate("/labs")} className="font-mono"
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", fontSize: 11, fontWeight: 600, background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 7, color: "#60a5fa", cursor: "pointer" }}>
                   Browse Labs <ArrowRight size={11} />
                 </button>
                 <NextSyncIndicator labs={labs} intervalMinutes={health?.scrape_interval_minutes ?? 60} />
@@ -170,179 +178,148 @@ export function Dashboard() {
             </div>
           </motion.div>
 
+          {/* ── Stat cards ──────────────────────────────────────────── */}
+          {!isLoading && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 }}
+              style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}
+            >
+              {STAT_CARDS.map((c, i) => (
+                <motion.div key={c.label}
+                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.08 + i * 0.04 }}
+                  style={{ padding: "16px 20px", borderRadius: 10, background: c.bg, border: `1px solid ${c.border}` }}
+                >
+                  <div className="font-mono" style={{ fontSize: isMobile ? 24 : 28, fontWeight: 700, color: c.color, lineHeight: 1, marginBottom: 5 }}>
+                    {c.value}
+                  </div>
+                  <div className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", letterSpacing: "0.2em", textTransform: "uppercase" }}>
+                    {c.label}
+                  </div>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+
           {/* ── Solving queue ───────────────────────────────────────── */}
           <AnimatePresence>
             {!isLoading && labs.some(l => l.solution_status === "solving" || l.solution_status === "unsolved") && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, height: 0 }}
-                style={{ marginBottom: 28 }}
-              >
+              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }} style={{ marginBottom: 28 }}>
                 <SolvingQueue labs={labs} />
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* ── Main two-column layout ──────────────────────────────── */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-            gap: 20,
-            alignItems: "start",
-          }}>
-
-            {/* ── Category progress ──────────────────────────────────── */}
-            <motion.section
-              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              <SectionLabel>Topics</SectionLabel>
-              {isLoading ? (
-                <SkeletonList count={4} />
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {categories.map((cat, i) => {
-                    const cfg = getTopicConfig(cat);
-                    const catLabs = labs.filter(l => l.category === cat);
-                    const catSolved = catLabs.filter(l => l.solved).length;
-                    const catSolving = catLabs.filter(l => l.solution_status === "solving").length;
-                    const catPct = catLabs.length > 0 ? Math.round((catSolved / catLabs.length) * 100) : 0;
-
-                    return (
-                      <motion.div
-                        key={cat}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 + i * 0.05 }}
-                        onClick={() => navigate(`/labs?cat=${cat}`)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 12,
-                          padding: "11px 14px",
-                          background: "var(--surface)", border: `1px solid var(--border)`,
-                          borderLeft: `3px solid ${cfg.primary}`,
-                          borderRadius: 8, cursor: "pointer",
-                          transition: "background 0.15s, border-color 0.15s",
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = cfg.bg; e.currentTarget.style.borderColor = cfg.border; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.borderLeftColor = cfg.primary; }}
-                      >
-                        <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: cfg.text, textTransform: "uppercase", letterSpacing: "0.08em", minWidth: 60 }}>
-                          {cfg.label !== "Topic" ? cfg.label : cat}
+          {/* ── Topics — full width ──────────────────────────────────── */}
+          <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} style={{ marginBottom: 24 }}>
+            <SectionLabel>Topics</SectionLabel>
+            {isLoading ? <SkeletonList count={3} /> : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {categories.map((cat, i) => {
+                  const cfg = getTopicConfig(cat);
+                  const catLabs = labs.filter(l => l.category === cat);
+                  const catSolved = catLabs.filter(l => l.solved).length;
+                  const catSolving = catLabs.filter(l => l.solution_status === "solving").length;
+                  const catPct = catLabs.length > 0 ? Math.round((catSolved / catLabs.length) * 100) : 0;
+                  return (
+                    <motion.div key={cat}
+                      initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.12 + i * 0.04 }}
+                      onClick={() => navigate(`/labs?cat=${cat}`)}
+                      style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 18px", background: "var(--surface)", border: `1px solid var(--border)`, borderLeft: `4px solid ${cfg.primary}`, borderRadius: 8, cursor: "pointer", transition: "background 0.15s, border-color 0.15s" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = cfg.bg; e.currentTarget.style.borderColor = cfg.border; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.borderLeftColor = cfg.primary; }}
+                    >
+                      <span className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: cfg.text, textTransform: "uppercase", letterSpacing: "0.08em", minWidth: 72 }}>
+                        {cfg.label !== "Topic" ? cfg.label : cat}
+                      </span>
+                      <div style={{ flex: 1, height: 6, background: "rgba(255,255,255,0.07)", borderRadius: 3, overflow: "hidden" }}>
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${catPct}%` }}
+                          transition={{ duration: 0.8, delay: 0.2 + i * 0.07, ease: [0.16, 1, 0.3, 1] }}
+                          style={{ height: "100%", background: cfg.primary, borderRadius: 3 }} />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        {catSolving > 0 && (
+                          <motion.span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fbbf24", display: "inline-block" }}
+                            animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} />
+                        )}
+                        <span className="font-mono" style={{ fontSize: 11, color: "var(--text-3)", minWidth: 52, textAlign: "right" }}>
+                          {catSolved}/{catLabs.length}
                         </span>
+                        <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: cfg.text, minWidth: 36, textAlign: "right" }}>{catPct}%</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </motion.section>
 
-                        <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${catPct}%` }}
-                            transition={{ duration: 0.7, delay: 0.15 + i * 0.07, ease: [0.16, 1, 0.3, 1] }}
-                            style={{ height: "100%", background: cfg.primary, borderRadius: 2 }}
-                          />
-                        </div>
+          {/* ── Bottom grid: Recently Solved + By Type ───────────────── */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "3fr 2fr", gap: 20, alignItems: "start" }}>
 
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          {catSolving > 0 && (
-                            <motion.span
-                              style={{ width: 5, height: 5, borderRadius: "50%", background: "#fbbf24", display: "inline-block" }}
-                              animate={{ opacity: [1, 0.3, 1] }}
-                              transition={{ duration: 1, repeat: Infinity }}
-                            />
-                          )}
-                          <span className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", minWidth: 52, textAlign: "right" }}>
-                            {catSolved}/{catLabs.length}
-                          </span>
-                          <span className="font-mono" style={{ fontSize: 10, color: cfg.text, minWidth: 28, textAlign: "right" }}>{catPct}%</span>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </motion.section>
-
-            {/* ── Recent activity ─────────────────────────────────────── */}
-            <motion.section
-              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.18 }}
-            >
+            {/* Recently Solved */}
+            <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <p className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", letterSpacing: "0.25em", textTransform: "uppercase" }}>Last Solved</p>
+                <SectionLabel>Recently Solved</SectionLabel>
                 {meta?.target_repo && (
-                  <a
-                    href={`https://github.com/${meta.target_repo}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono"
-                    style={{
-                      display: "flex", alignItems: "center", gap: 5,
-                      fontSize: 9, color: "var(--text-3)", textDecoration: "none",
-                      padding: "3px 8px", borderRadius: 4,
-                      border: "1px solid var(--border)",
-                      transition: "color 0.15s, border-color 0.15s",
-                    }}
+                  <a href={`https://github.com/${meta.target_repo}`} target="_blank" rel="noopener noreferrer" className="font-mono"
+                    style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, color: "var(--text-3)", textDecoration: "none", padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", transition: "color 0.15s, border-color 0.15s" }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(59,130,246,0.35)"; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-3)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
                   >
-                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-                    {meta.target_repo.split("/")[1]}
+                    {GH_ICON} {meta.target_repo.split("/")[1]}
                   </a>
                 )}
               </div>
-              {isLoading ? (
-                <SkeletonList count={1} />
-              ) : recentlySolved.length === 0 ? (
-                <div className="font-mono" style={{
-                  padding: "32px 20px", textAlign: "center",
-                  background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
-                  fontSize: 12, color: "var(--text-3)",
-                }}>
+              {isLoading ? <SkeletonList count={4} /> : recentlySolved.length === 0 ? (
+                <div className="font-mono" style={{ padding: "32px 20px", textAlign: "center", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--text-3)" }}>
                   No labs solved yet
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
                   {recentlySolved.map((lab, i) => {
                     const cfg = getTopicConfig(lab.ai_topic ?? lab.category);
                     return (
-                      <motion.div
-                        key={lab.slug}
-                        initial={{ opacity: 0, x: 8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.18 + i * 0.05 }}
-                        onClick={() => navigate(`/labs/${lab.slug}`)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 10,
-                          padding: "10px 14px",
-                          cursor: "pointer",
-                          borderBottom: i < recentlySolved.length - 1 ? "1px solid var(--border)" : "none",
-                          transition: "background 0.12s",
-                        }}
+                      <motion.div key={lab.slug}
+                        initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.2 + i * 0.04 }}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderBottom: i < recentlySolved.length - 1 ? "1px solid var(--border)" : "none", transition: "background 0.12s" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.025)"; }}
                         onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                       >
                         <CheckCircle2 size={13} style={{ color: cfg.primary, flexShrink: 0, opacity: 0.75 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => navigate(`/labs/${lab.slug}`)}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {lab.title}
                           </div>
-                          <div className="font-mono" style={{ fontSize: 9, color: cfg.text, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 1 }}>
+                          <div className="font-mono" style={{ fontSize: 9, color: cfg.text, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 2 }}>
                             {cfg.label !== "Topic" ? cfg.label : lab.category}
                             {lab.subcategory && <span style={{ color: "var(--text-3)", marginLeft: 5 }}>· {lab.subcategory}</span>}
                           </div>
                         </div>
-                        <span className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", flexShrink: 0 }}>
-                          {timeAgo(lab.solved_at!)}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <span className="font-mono" style={{ fontSize: 10, color: "var(--text-3)" }}>
+                            {timeAgo(lab.solved_at!)}
+                          </span>
+                          {lab.github_url && (
+                            <a href={lab.github_url} target="_blank" rel="noopener noreferrer"
+                              title="View source on GitHub"
+                              style={{ color: "var(--text-3)", opacity: 0.5, textDecoration: "none", display: "flex", alignItems: "center", transition: "opacity 0.15s" }}
+                              onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                              onMouseLeave={e => (e.currentTarget.style.opacity = "0.5")}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {GH_ICON}
+                            </a>
+                          )}
+                        </div>
                       </motion.div>
                     );
                   })}
-
-                  <div
-                    onClick={() => navigate("/labs")}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      padding: "9px 14px",
-                      cursor: "pointer", borderTop: "1px solid var(--border)",
-                      transition: "background 0.12s",
-                    }}
+                  <div onClick={() => navigate("/labs")}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", cursor: "pointer", borderTop: "1px solid var(--border)", transition: "background 0.12s" }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.02)"; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
@@ -353,10 +330,45 @@ export function Dashboard() {
               )}
             </motion.section>
 
+            {/* By Type */}
+            <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.26 }}>
+              <SectionLabel>By Type</SectionLabel>
+              {isLoading ? <SkeletonList count={3} /> : (
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                  {subcatRows.map((row, i) => {
+                    const rowPct = row.total > 0 ? Math.round((row.solved / row.total) * 100) : 0;
+                    const allDone = row.solved === row.total && row.total > 0;
+                    return (
+                      <div key={row.label}
+                        style={{ padding: "13px 16px", borderBottom: i < subcatRows.length - 1 ? "1px solid var(--border)" : "none" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+                          <span className="font-mono" style={{ fontSize: 11, fontWeight: 600, color: allDone ? "#34d399" : "var(--text-2)", textTransform: "capitalize", letterSpacing: "0.04em" }}>
+                            {row.label}
+                          </span>
+                          <span className="font-mono" style={{ fontSize: 10, color: allDone ? "#34d399" : "var(--text-3)" }}>
+                            {row.solved}/{row.total} · {rowPct}%
+                          </span>
+                        </div>
+                        <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${rowPct}%` }}
+                            transition={{ duration: 0.7, delay: 0.28 + i * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                            style={{ height: "100%", background: allDone ? "#34d399" : "#60a5fa", borderRadius: 2 }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.section>
+
           </div>
 
           {/* ── Footer ───────────────────────────────────────────────── */}
-          <div className="font-mono" style={{ marginTop: 48, textAlign: "center", fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em" }}>
+          <div className="font-mono" style={{ marginTop: 52, textAlign: "center", fontSize: 10, color: "var(--text-3)", letterSpacing: "0.08em" }}>
             Crafted by Guy Shonshon · {new Date().getFullYear()}
           </div>
 
