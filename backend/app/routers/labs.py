@@ -87,6 +87,7 @@ async def list_labs(session: Session = Depends(get_session)):
             "solution_status": _solution_status(sol, has_steps),
             "summary": (sol.summary or "") if sol else "",
             "solve_log": (sol.solve_log or "") if sol else "",
+            "solved_at": sol.solved_at.isoformat() if (sol and sol.solved_at) else None,
             "discovered_at": lab.discovered_at.isoformat(),
             "last_scraped": lab.last_scraped.isoformat() if lab.last_scraped else None,
         })

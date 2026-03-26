@@ -40,6 +40,7 @@ export interface Lab {
   summary: string;
   /** Timestamped pipeline log; populated while solving, kept after for reference. */
   solve_log: string;
+  solved_at: string | null;
   discovered_at: string;
   last_scraped: string | null;
 }
