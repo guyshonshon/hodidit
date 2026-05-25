@@ -188,6 +188,10 @@ async def _do_solve_pipeline(
     solution = existing_solution or Solution(lab_slug=lab.slug)
     solution.status = "solving"
     solution.created_at = datetime.utcnow()
+    if force or not solution_has_steps(solution):
+        solution.steps_json = "[]"
+        solution.summary = ""
+        solution.solved_at = None
     solution.solve_log = ""
     solution.solve_status_detail = ""
     session.add(solution)
