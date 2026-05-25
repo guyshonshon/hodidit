@@ -118,3 +118,32 @@ You must solve Questions 1-2 and choose ONE of Questions 3-4.
     assert questions[2]["choice_group"] == "questions_3_4"
     assert questions[3]["selected"] is True
     assert questions[3]["required"] is False
+
+
+def test_project_question_keeps_challenge_inside_parent_question():
+    raw = """# Python Mid Project
+
+## Question 1: Treasure Hunt Game
+
+**Step 1:** Create a file.
+
+**Step 2:** Move a cursor.
+
+**Challenge:** Maintain a leaderboard of the top 10 best results.
+
+---
+
+## Question 2: Get File Size
+
+Write a function called `GetFileSize`.
+"""
+
+    _, questions_raw = parse_content(raw, "https://example.test/projects/python-mid-project/", is_html=False)
+    questions = json.loads(questions_raw)
+
+    assert [q["text"] for q in questions] == [
+        "Question 1: Treasure Hunt Game",
+        "Question 2: Get File Size",
+    ]
+    assert "Challenge" in questions[0]["full_text"]
+    assert "Challenge" not in questions[1]["full_text"]

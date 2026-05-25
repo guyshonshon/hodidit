@@ -14,6 +14,7 @@ for the same exercise unless `force=True` is passed to the solve endpoint.
 """
 import asyncio
 import json
+import re
 
 from .ai_client import call_with_retries, get_solve_client, get_solve_provider_label, normalise_steps
 from .models import SolutionStep
@@ -62,6 +63,11 @@ PYTHON CODE STYLE — CRITICAL:
     the exercise clearly wants manual iteration, etc.
 15. Only use built-ins/libraries when the exercise explicitly asks to use them or when the
     topic is about learning that specific library (e.g., a numpy/pandas exercise).
+16. If a selected question contains nested Step, Requirement, Challenge, Bonus, or Extra Credit
+    blocks, solve ALL of those nested blocks. A Challenge/Bonus inside a selected question is
+    mandatory for this system, even if a student-facing assignment might call it optional.
+17. For file cursor/navigation exercises, use file cursor APIs such as seek(), tell(), and read(1)
+    instead of loading the whole file into memory. Keep file handling efficient and realistic.
 
 EXAMPLE_INPUTS rule (CRITICAL for interactive code):
 - If a 'code' step contains input() calls, you MUST include 'example_inputs': a JSON object
@@ -105,7 +111,161 @@ Rules:
 - Use type "docker" for Docker commands, "git" for Git commands, "command" for shell commands, and "code" for Python scripts.
 - For code steps, include complete runnable Python and example_inputs when input() is used.
 - For project work items, return buildable file/setup/test/documentation steps, not a summary.
+- If a missing question includes a Challenge/Bonus/Extra Credit block, implement that block too.
 """
+
+
+MISSING_REQUIREMENTS_SYSTEM = """You are completing missing nested project/lab requirements.
+
+Return ONLY a single valid JSON object with this shape:
+{"steps": [<solution steps for the missing nested requirements only>]}
+
+Rules:
+- Answer ONLY the missing nested requirements provided in the prompt.
+- Keep question_ref set to the parent Q number shown in the prompt.
+- Challenge, Bonus, and Extra Credit blocks are mandatory here.
+- For Python file cursor/navigation tasks, use seek(), tell(), and read(1) where appropriate.
+- Return buildable code/commands, not a summary.
+"""
+
+
+_NESTED_REQUIREMENT_RE = re.compile(
+    r"^\s*(?:#{1,6}\s*)?(?:[-*]\s*)?(?:\*\*)?\s*"
+    r"(?P<label>"
+    r"(?:step|phase|milestone|task|requirement|challenge|bonus|extra\s+credit)"
+    r"(?:\s+\d+(?:[._-]\d+)*)?"
+    r")"
+    r"\s*(?:\*\*)?\s*[:\-–—]\s*(?:\*\*)?\s*(?P<text>.*?)\s*(?:\*\*)?\s*$",
+    re.IGNORECASE,
+)
+_MANDATORY_NESTED_LABEL_RE = re.compile(r"^(challenge|bonus|extra\s+credit)\b", re.IGNORECASE)
+_WORD_RE = re.compile(r"[a-z][a-z0-9_'-]{3,}")
+_STOPWORDS = {
+    "about", "after", "again", "also", "before", "block", "called", "check", "each",
+    "empty", "file", "from", "have", "into", "must", "name", "only", "player",
+    "program", "question", "receive", "receives", "result", "results", "return",
+    "score", "string", "table", "that", "their", "then", "there", "this", "when",
+    "where", "with", "write", "yes",
+}
+
+
+# ── Nested requirement extraction ───────────────────────────────────────────
+
+def _normalise_requirement_text(value: str) -> str:
+    value = re.sub(r"`([^`]+)`", r"\1", value)
+    value = re.sub(r"[*_#>]+", "", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
+def _extract_nested_requirements(question: dict) -> list[dict]:
+    """Return labelled nested work blocks from a selected question."""
+    full_text = question.get("full_text") or question.get("text") or ""
+    lines = full_text.splitlines()
+    starts: list[tuple[int, str, str]] = []
+
+    for idx, line in enumerate(lines):
+        match = _NESTED_REQUIREMENT_RE.match(line)
+        if not match:
+            continue
+        label = _normalise_requirement_text(match.group("label")).title()
+        inline_text = _normalise_requirement_text(match.group("text"))
+        starts.append((idx, label, inline_text))
+
+    requirements: list[dict] = []
+    question_ref = _coerce_question_ref(question.get("number", question.get("id")))
+    for idx, (start_idx, label, inline_text) in enumerate(starts):
+        end_idx = starts[idx + 1][0] if idx + 1 < len(starts) else len(lines)
+        block = "\n".join(lines[start_idx:end_idx]).strip()
+        block_text = _normalise_requirement_text(block)
+        text = inline_text or block_text
+        if not text:
+            continue
+        requirements.append({
+            "question_ref": question_ref,
+            "label": label,
+            "text": text,
+            "full_text": block,
+            "mandatory": bool(_MANDATORY_NESTED_LABEL_RE.match(label)),
+        })
+    return requirements
+
+
+def _requirement_prompt_lines(question: dict) -> list[str]:
+    requirements = _extract_nested_requirements(question)
+    if not requirements:
+        return []
+    lines = ["  Mandatory nested work inside this question:"]
+    for requirement in requirements:
+        suffix = " (must implement)" if requirement["mandatory"] else ""
+        text = requirement["text"][:220]
+        lines.append(f"  - {requirement['label']}{suffix}: {text}")
+    return lines
+
+
+def _requirement_keywords(requirement: dict) -> list[str]:
+    words: list[str] = []
+    for word in _WORD_RE.findall(requirement.get("text", "").lower()):
+        word = word.strip("'_-")
+        if word and word not in _STOPWORDS and word not in words:
+            words.append(word)
+    return words[:12]
+
+
+def _step_text_for_question(steps: list[dict], question_ref: int | None) -> str:
+    chunks: list[str] = []
+    for step in steps:
+        ref = _coerce_question_ref(step.get("question_ref"))
+        if question_ref is not None and ref != question_ref:
+            continue
+        chunks.extend(
+            str(step.get(field) or "")
+            for field in ("title", "description", "content", "output")
+        )
+    return "\n".join(chunks).lower()
+
+
+def _requirement_is_covered(requirement: dict, steps: list[dict]) -> bool:
+    haystack = _step_text_for_question(steps, requirement.get("question_ref"))
+    if not haystack:
+        return False
+
+    label_key = requirement["label"].lower().split()[0]
+    keywords = _requirement_keywords(requirement)
+    if label_key in haystack and not keywords:
+        return True
+    if not keywords:
+        return True
+
+    hits = sum(1 for keyword in keywords if keyword in haystack)
+    threshold = max(1, min(3, len(keywords) // 3 or 1))
+    return hits >= threshold
+
+
+def _missing_requirements_from_list(
+    steps: list[dict],
+    requirements: list[dict],
+) -> list[dict]:
+    return [
+        requirement
+        for requirement in requirements
+        if requirement.get("mandatory") and not _requirement_is_covered(requirement, steps)
+    ]
+
+
+def _missing_question_requirements(steps: list[dict], questions: list[dict]) -> list[dict]:
+    requirements: list[dict] = []
+    for question in _selected_questions(questions):
+        requirements.extend(_extract_nested_requirements(question))
+    return _missing_requirements_from_list(steps, requirements)
+
+
+def _missing_requirements_message(missing: list[dict]) -> str:
+    labels = [
+        f"Q{item.get('question_ref')}: {item.get('label')}"
+        for item in missing
+    ]
+    return f"Missing nested requirement coverage: {labels}"
 
 
 # ── Prompt builder ───────────────────────────────────────────────────────────
@@ -135,6 +295,7 @@ def _build_prompt(
             )
         for q in selected_questions:
             lines.append(f"Q{q.get('number', q.get('id', '?'))}: {q.get('full_text', q.get('text', ''))}")
+            lines.extend(_requirement_prompt_lines(q))
         q_lines = "\n".join(lines)
 
     # Give the AI the declared category and subcategory as hints
@@ -155,6 +316,8 @@ def _build_prompt(
             "\nFor multi-file projects, provide exact commands that create directories/files with heredocs, or code steps"
             " whose title clearly names the file path. Include requirements.txt, README/setup instructions, and any"
             " AI interaction log file when the source requires it."
+            "\nImplement every nested Step, Requirement, Challenge, Bonus, and Extra Credit block inside each selected question."
+            "\nWhen a task describes cursor movement through a file, use seek()/tell()/read(1) instead of reading the whole file."
             "\nProject code is not sandboxed automatically, so commands and expected outputs must be realistic and complete."
         )
 
@@ -343,6 +506,105 @@ async def _complete_missing_questions(
     return data["steps"]
 
 
+def _build_missing_requirements_prompt(
+    category: str,
+    title: str,
+    content: str,
+    missing_requirements: list[dict],
+    existing_steps: list[dict],
+    subcategory: str = "",
+) -> str:
+    missing_lines = []
+    for requirement in missing_requirements:
+        missing_lines.append(
+            f"Q{requirement.get('question_ref')} {requirement.get('label')}:\n"
+            f"{requirement.get('full_text') or requirement.get('text')}"
+        )
+
+    compact_steps = [
+        {
+            "type": s.get("type"),
+            "title": s.get("title"),
+            "content": s.get("content"),
+            "question_ref": s.get("question_ref"),
+        }
+        for s in existing_steps
+    ]
+    content_limit = 8000 if subcategory == "projects" else 3500
+
+    return f"""Declared category: {category}, subcategory: {subcategory}
+Title: {title}
+
+--- SOURCE CONTENT (context) ---
+{content[:content_limit]}
+
+--- MISSING NESTED REQUIREMENTS TO COMPLETE ---
+{chr(10).join(missing_lines)}
+
+--- EXISTING SOLUTION STEPS (do not duplicate) ---
+{json.dumps(compact_steps, ensure_ascii=False)[:3500]}
+
+Return JSON now with steps for the missing nested requirements only."""
+
+
+def _make_missing_requirements_validate(
+    missing_requirements: list[dict],
+    existing_steps: list[dict],
+):
+    def _validate(data: dict) -> None:
+        if "steps" not in data or not isinstance(data["steps"], list):
+            raise ValueError("Response missing 'steps' array")
+        if not data["steps"]:
+            raise ValueError("Steps array is empty")
+        _normalise_question_refs(data["steps"])
+        returned_refs = {
+            _coerce_question_ref(step.get("question_ref"))
+            for step in data["steps"]
+        }
+        missing_refs = [
+            requirement
+            for requirement in missing_requirements
+            if requirement.get("question_ref") not in returned_refs
+        ]
+        if missing_refs:
+            raise ValueError(_missing_requirements_message(missing_refs))
+        combined_steps = [*existing_steps, *data["steps"]]
+        still_missing = _missing_requirements_from_list(combined_steps, missing_requirements)
+        if still_missing:
+            raise ValueError(_missing_requirements_message(still_missing))
+    return _validate
+
+
+async def _complete_missing_requirements(
+    client,
+    category: str,
+    title: str,
+    content: str,
+    missing_requirements: list[dict],
+    existing_steps: list[dict],
+    subcategory: str = "",
+) -> list[dict]:
+    prompt = _build_missing_requirements_prompt(
+        category=category,
+        title=title,
+        content=content,
+        missing_requirements=missing_requirements,
+        existing_steps=existing_steps,
+        subcategory=subcategory,
+    )
+    data = await asyncio.to_thread(
+        call_with_retries,
+        client=client,
+        system_instruction=MISSING_REQUIREMENTS_SYSTEM,
+        prompt=prompt,
+        temperature=0.1,
+        validate_fn=_make_missing_requirements_validate(missing_requirements, existing_steps),
+    )
+    normalise_steps(data["steps"])
+    _normalise_question_refs(data["steps"])
+    return data["steps"]
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 async def solve_lab(
@@ -402,6 +664,26 @@ async def solve_lab(
             missing = _missing_question_refs(data["steps"], q_numbers)
             if missing:
                 raise RuntimeError(_missing_questions_message(missing))
+
+        missing_requirements = _missing_question_requirements(data["steps"], questions)
+        if missing_requirements:
+            print(f"[solver] Completing missing nested requirement coverage: "
+                  f"{_missing_requirements_message(missing_requirements)}")
+            completion_steps = await _complete_missing_requirements(
+                client=client,
+                category=category,
+                title=title,
+                content=content,
+                missing_requirements=missing_requirements,
+                existing_steps=data["steps"],
+                subcategory=subcategory,
+            )
+            data["steps"].extend(completion_steps)
+            normalise_steps(data["steps"])
+            _normalise_question_refs(data["steps"])
+            missing_requirements = _missing_question_requirements(data["steps"], questions)
+            if missing_requirements:
+                raise RuntimeError(_missing_requirements_message(missing_requirements))
 
     steps = [
         SolutionStep(
