@@ -8,7 +8,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { CategoryChip, getTopicConfig } from "../components/CategoryChip";
 import { Category, Lab } from "../types";
 
-const ALL_CATS: Category[] = ["linux", "git", "python", "homework"];
+const BASE_CATS: Category[] = ["linux", "git", "python", "docker", "projects", "homework"];
 
 // ── Lab row ─────────────────────────────────────────────────────────────────
 
@@ -182,8 +182,11 @@ export function Labs() {
     return matchCat && matchSearch;
   });
 
+  const availableCats = [...new Set([...BASE_CATS, ...labs.map(l => l.category)])]
+    .filter(cat => labs.some(l => l.category === cat));
+
   // Group by category, preserving a stable order
-  const catOrder = [...new Set([...ALL_CATS, ...filtered.map(l => l.category)])];
+  const catOrder = [...new Set([...BASE_CATS, ...filtered.map(l => l.category)])];
   const grouped = catOrder
     .map(cat => ({ cat, items: filtered.filter(l => l.category === cat) }))
     .filter(g => g.items.length > 0);
@@ -264,7 +267,7 @@ export function Labs() {
           >
             All <span style={{ opacity: 0.5, fontSize: 10, marginLeft: 3 }}>{total}</span>
           </button>
-          {ALL_CATS.map((cat) => (
+          {availableCats.map((cat) => (
             <CategoryChip
               key={cat}
               category={cat}

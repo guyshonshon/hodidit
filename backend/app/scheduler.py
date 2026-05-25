@@ -1,4 +1,4 @@
-"""APScheduler: periodically re-scrape for new labs/homework."""
+"""APScheduler: periodically re-scrape for new labs/homework/projects."""
 import asyncio
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -9,6 +9,7 @@ from .config import settings
 from .database import engine
 from .models import Lab
 from .scraper import discover_labs
+from .github_watchers import sync_repo_watchers
 
 scheduler = AsyncIOScheduler()
 
@@ -24,6 +25,11 @@ async def _sync_labs():
                 existing.content = lab.content
                 existing.questions_raw = lab.questions_raw
                 existing.last_scraped = lab.last_scraped
+                existing.page_title = lab.page_title
+                existing.is_dynamic = lab.is_dynamic
+                existing.url = lab.url
+                if lab.ai_topic:
+                    existing.ai_topic = lab.ai_topic
                 session.add(existing)
             else:
                 session.add(lab)
@@ -66,11 +72,28 @@ async def _auto_solve_slugs(slugs: list[str]) -> None:
         await asyncio.sleep(1)
 
 
+async def _sync_watchers():
+    """Snapshot current GitHub repo watchers/subscribers."""
+    try:
+        with Session(engine) as session:
+            result = await sync_repo_watchers(session)
+        if result.get("new_count"):
+            print(f"[watchers] {result['new_count']} new watcher(s) recorded")
+    except Exception as exc:
+        print(f"[watchers] Sync failed: {exc}")
+
+
 def start_scheduler():
     scheduler.add_job(
         _sync_labs,
         trigger=IntervalTrigger(minutes=settings.scrape_interval_minutes),
         id="sync_labs",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _sync_watchers,
+        trigger=IntervalTrigger(minutes=settings.watcher_check_interval_minutes),
+        id="sync_watchers",
         replace_existing=True,
     )
     scheduler.start()

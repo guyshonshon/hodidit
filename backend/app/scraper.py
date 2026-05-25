@@ -9,6 +9,7 @@ Path → metadata mapping
 ────────────────────────
   {category}/{subcategory}/{name}.md    →  normal content (labs, lessons, …)
   homeworks/{name}.html                 →  homework exercises (HTML, may be dynamic)
+  projects/{name}.md                    →  project assignment
   GIT/…                                 →  normalised to category="git"
 
 Skipped:
@@ -38,8 +39,9 @@ RAW_BASE      = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
 API_BASE      = f"https://api.github.com/repos/{REPO}"
 
 # Only exercises — lessons/reference material are excluded
-CONTENT_SUBCATEGORIES = {"labs", "homework"}
+CONTENT_SUBCATEGORIES = {"labs", "homework", "projects"}
 SKIP_DIRS = {"cheatsheets", "pdf", "classcode", "_layouts", "_includes", "assets"}
+PROJECT_ROOTS = {"project", "projects"}
 
 # HTML patterns that indicate content is behind a generate action
 _GENERATE_HTML_PATTERNS = [
@@ -124,6 +126,16 @@ def _path_to_meta(path: str) -> Optional[dict]:
         return {"category": category, "subcategory": subcategory, "slug": slug,
                 "raw_path": path, "pages_url": pages_url}
 
+    # ── projects/{name}.md ────────────────────────────────────────────────────
+    if parts[0].lower() in PROJECT_ROOTS and len(parts) == 2:
+        stem = re.sub(r"\.(html?|md)$", "", parts[1], flags=re.I)
+        subcategory = "projects"
+        slug = _make_slug(f"projects-{stem}")
+        pages_url = f"{SITE_BASE}/{parts[0]}/{stem}/"
+        return {"category": _infer_topic_from_text(stem) or "projects",
+                "subcategory": subcategory, "slug": slug,
+                "raw_path": path, "pages_url": pages_url}
+
     # ── {category}/{subcategory}/{name}.md ────────────────────────────────────
     if len(parts) != 3:
         return None  # too shallow (index) or too deep (sub-sub-pages)
@@ -147,6 +159,24 @@ def _make_slug(raw: str) -> str:
     s = re.sub(r"[^a-z0-9-]", "-", s)
     s = re.sub(r"-+", "-", s)
     return s.strip("-")
+
+
+def _infer_topic_from_text(text: str) -> Optional[str]:
+    """Best-effort local topic inference for project files before AI solving."""
+    haystack = text.lower()
+    topic_patterns = [
+        ("python", [r"\bpython\b", r"\bflask\b", r"\bdjango\b", r"\bfastapi\b", r"\bpip\b", r"\bvenv\b"]),
+        ("docker", [r"\bdocker\b", r"\bcontainer\b", r"\bdockerfile\b", r"\bdocker-compose\b"]),
+        ("git", [r"\bgit\b", r"\bgithub\b", r"\brepository\b"]),
+        ("linux", [r"\blinux\b", r"\bbash\b", r"\bshell\b", r"\bchmod\b", r"\bsystemctl\b"]),
+        ("kubernetes", [r"\bkubernetes\b", r"\bk8s\b", r"\bkubectl\b"]),
+        ("ansible", [r"\bansible\b", r"\bplaybook\b"]),
+        ("terraform", [r"\bterraform\b", r"\biac\b"]),
+    ]
+    for topic, patterns in topic_patterns:
+        if any(re.search(pattern, haystack) for pattern in patterns):
+            return topic
+    return None
 
 
 # ── GitHub tree crawler ────────────────────────────────────────────────────────
@@ -246,14 +276,20 @@ def parse_content(raw: str, url: str, is_html: bool = False) -> tuple[str, str]:
     return text, json.dumps(questions)
 
 
+def infer_content_topic(title: str, content: str, fallback: str = "projects") -> str:
+    """Infer a display topic from title/content using local keyword signals."""
+    return _infer_topic_from_text(f"{title}\n{content}") or fallback
+
+
 def extract_questions(text: str, url: str) -> list[dict]:
     """
     Extract numbered questions/tasks from lab content.
 
     Handles two layouts:
-      A) Inline:  "1. Description"  /  "Task 2: Description"
-      B) Header:  "**Task 1.1**"  on its own line, description on the next line(s)
-                  (also handles "### Task 2.1", "**2.**", etc.)
+      A) Explicit task headers:  "### Question 1", "### Exercise 2",
+         "**Task 1.1**". When these exist, they are treated as the top-level
+         questions and nested numbered checklists stay inside the parent block.
+      B) Numbered list questions:  "1. Description" / "2. Description".
 
     full_text captures everything from the question marker to the next question
     marker (in the original text), preserving code blocks and all formatting.
@@ -270,71 +306,224 @@ def extract_questions(text: str, url: str) -> list[dict]:
     clean_lines = clean.split("\n")
     n = len(clean_lines)
 
-    # Regex: optional markdown markers, optional keyword, mandatory number (with
-    # optional sub-number like 1.1), optional separator, optional inline text.
-    _TASK_RE = re.compile(
-        r"^(?:[#*_]+\s*)?"                         # leading #/**/_
-        r"(?:task|exercise|question|q|step|lab)?\s*"
-        r"(\d+)(?:[._](\d+))?"                     # number (+ optional sub)
-        r"[.):\-\s]*"                               # separator
-        r"(.*?)(?:[*_#]*)\s*$",                     # optional inline text (strip trailing markers)
+    _EXPLICIT_TASK_RE = re.compile(
+        r"^(?:#{1,6}\s*)?(?:\*\*)?\s*"
+        r"(task|exercise|question|q)\s+"
+        r"(\d+(?:[._]\d+)*)"
+        r"(?:\s*\*\*)?"
+        r"(?:\s*[:\-–—]\s*(.*?))?"
+        r"(?:\s*\*\*)?\s*$",
         re.IGNORECASE,
     )
+    _NUMBERED_LIST_RE = re.compile(r"^\s{0,3}(\d+)[.)]\s+(.+?)\s*$")
+    _HEADING_RE = re.compile(r"^(#{2,6})\s+(.+?)\s*$")
+    _BOLD_TASK_RE = re.compile(r"^\*\*([^*][^*]{3,120})\*\*\s*$")
 
-    # First pass: locate question start lines and their headline text.
-    question_starts: list[tuple[int, str]] = []  # (line_idx, headline)
+    def _normalise_inline(value: str) -> str:
+        value = value.strip()
+        value = re.sub(r"^[#*_>\s]+", "", value)
+        value = re.sub(r"[*_#\s]+$", "", value)
+        return value.strip()
+
+    def _looks_like_project_doc() -> bool:
+        if re.search(r"/projects?/", url, re.IGNORECASE):
+            return True
+        heading_hits = 0
+        for line in clean_lines:
+            m = _HEADING_RE.match(line.strip())
+            if not m:
+                continue
+            heading = _normalise_inline(m.group(2))
+            if re.search(r"^(phase|milestone|sprint|deliverable|feature|module)\b", heading, re.IGNORECASE):
+                heading_hits += 1
+        return heading_hits >= 2
+
+    def _is_reference_heading(heading: str) -> bool:
+        return bool(re.search(
+            r"^(description|overview|background|submission requirements|best practices|tips|hints|"
+            r"final evaluation|ai-assisted|document your ai|project structure|challenges?|good luck)\b",
+            heading,
+            re.IGNORECASE,
+        ))
+
+    def _is_work_heading(heading: str) -> bool:
+        if _is_reference_heading(heading):
+            return False
+        return bool(
+            re.search(r"^(phase|milestone|sprint|deliverable|feature|module|requirement|part|step)\b", heading, re.IGNORECASE)
+            or re.search(
+                r"\b(setup|implementation|authentication|auth|encryption|sharing|security|auditing|"
+                r"documentation|testing|deployment|endpoint|api|storage|listing|metadata)\b",
+                heading,
+                re.IGNORECASE,
+            )
+        )
+
+    def _lookahead_description(start_idx: int, stop_re: re.Pattern) -> tuple[str, int]:
+        """Return a short description after a marker-only task header."""
+        desc_parts: list[str] = []
+        consumed_until = start_idx
+        j = start_idx + 1
+        while j < n and len(desc_parts) < 3:
+            clean_nl = _normalise_inline(clean_lines[j])
+            raw_nl = _normalise_inline(orig_lines[j])
+            if not clean_nl:
+                if desc_parts:
+                    break
+                j += 1
+                continue
+            if stop_re.match(clean_nl) or _NUMBERED_LIST_RE.match(clean_lines[j]):
+                break
+            if len(raw_nl) >= 8:
+                desc_parts.append(raw_nl)
+                consumed_until = j
+            j += 1
+        return " ".join(desc_parts), consumed_until
+
+    def _build_questions(question_starts: list[tuple[int, str]]) -> list[dict]:
+        questions: list[dict] = []
+        for idx, (start_line, headline) in enumerate(question_starts):
+            end_line = question_starts[idx + 1][0] if idx + 1 < len(question_starts) else len(orig_lines)
+            full_block = "\n".join(orig_lines[start_line:end_line]).strip()
+            q_num = idx + 1
+            questions.append({
+                "id": q_num,
+                "number": q_num,
+                "text": headline,
+                "full_text": full_block,
+                "required": True,
+                "selected": True,
+            })
+        return _apply_question_constraints(questions)
+
+    def _apply_question_constraints(questions: list[dict]) -> list[dict]:
+        """Annotate source choice ranges without reducing solve coverage."""
+        if not questions:
+            return questions
+
+        req_and_choice = re.search(
+            r"solve\s+questions?\s+(\d+)\s*[-\u2013\u2014]\s*(\d+).*?"
+            r"choose\s+(?:one|1)\s+of\s+questions?\s+(\d+)\s*[-\u2013\u2014]\s*(\d+)",
+            text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        choice_only = re.search(
+            r"choose\s+(?:one|1)\s+of\s+questions?\s+(\d+)\s*[-\u2013\u2014]\s*(\d+)",
+            text,
+            re.IGNORECASE,
+        )
+        if not req_and_choice and not choice_only:
+            return questions
+
+        if req_and_choice:
+            req_start, req_end, choice_start, choice_end = [int(v) for v in req_and_choice.groups()]
+            explicitly_selected = set(range(req_start, req_end + 1))
+            choice_numbers = list(range(choice_start, choice_end + 1))
+        else:
+            choice_start, choice_end = [int(v) for v in choice_only.groups()]
+            explicitly_selected = {q["number"] for q in questions if not (choice_start <= q["number"] <= choice_end)}
+            choice_numbers = list(range(choice_start, choice_end + 1))
+
+        for q in questions:
+            number = q["number"]
+            if number in explicitly_selected:
+                q["required"] = True
+                q["selected"] = True
+            elif number in choice_numbers:
+                q["required"] = False
+                q["selected"] = True
+                q["choice_group"] = f"questions_{choice_numbers[0]}_{choice_numbers[-1]}"
+                q["selection_reason"] = "Included even though the source marks this range as a choice"
+            else:
+                q["required"] = True
+                q["selected"] = True
+        return questions
+
+    def _structured_project_starts() -> list[tuple[int, str]]:
+        if not _looks_like_project_doc():
+            return []
+
+        headings: list[tuple[int, str]] = []
+        structural_headings: list[tuple[int, str]] = []
+        work_headings: list[tuple[int, str]] = []
+        for idx, line in enumerate(clean_lines):
+            m = _HEADING_RE.match(line.strip())
+            if not m:
+                continue
+            raw_match = _HEADING_RE.match(orig_lines[idx].strip())
+            heading = _normalise_inline((raw_match or m).group(2))
+            if not heading or _is_reference_heading(heading):
+                continue
+            headings.append((idx, heading))
+            if re.search(r"^(phase|milestone|sprint|deliverable|feature|module)\b", heading, re.IGNORECASE):
+                structural_headings.append((idx, heading))
+            if _is_work_heading(heading):
+                work_headings.append((idx, heading))
+
+        if structural_headings:
+            return structural_headings
+        if work_headings:
+            return work_headings
+        if headings:
+            return headings
+
+        bold_starts: list[tuple[int, str]] = []
+        for idx, line in enumerate(clean_lines):
+            m = _BOLD_TASK_RE.match(line.strip())
+            if not m:
+                continue
+            raw_match = _BOLD_TASK_RE.match(orig_lines[idx].strip())
+            heading = _normalise_inline((raw_match or m).group(1))
+            if heading and not _is_reference_heading(heading):
+                bold_starts.append((idx, heading))
+        return bold_starts
+
+    # Prefer explicit Question/Exercise/Task headings. This prevents nested
+    # numbered checklists inside Docker exercises from becoming fake questions.
+    explicit_starts: list[tuple[int, str]] = []
     i = 0
     while i < n:
-        stripped = clean_lines[i].strip()
+        stripped = _normalise_inline(clean_lines[i])
         if not stripped:
             i += 1
             continue
+        m = _EXPLICIT_TASK_RE.match(stripped)
+        if not m:
+            i += 1
+            continue
+        raw_match = _EXPLICIT_TASK_RE.match(_normalise_inline(orig_lines[i]))
+        keyword, label, inline_text = (raw_match or m).groups()
+        headline = _normalise_inline(inline_text or "")
+        consumed_until = i
+        if not headline:
+            headline, consumed_until = _lookahead_description(i, _EXPLICIT_TASK_RE)
+        if not headline:
+            headline = f"{keyword.title()} {label}"
+        explicit_starts.append((i, f"{keyword.title()} {label}: {headline}"))
+        i = consumed_until + 1
 
-        m = _TASK_RE.match(stripped)
-        if m:
-            inline_text = m.group(3).strip()
-            consumed_until = i
+    if explicit_starts:
+        return _build_questions(explicit_starts)
 
-            # If no inline text, look ahead for the description on subsequent lines
-            if not inline_text:
-                j = i + 1
-                desc_parts: list[str] = []
-                while j < n and len(desc_parts) < 3:
-                    nl = clean_lines[j].strip()
-                    nl_norm = re.sub(r"^[#*_]+\s*", "", nl)
-                    if not nl:
-                        if desc_parts:
-                            break
-                        j += 1
-                        continue
-                    if _TASK_RE.match(nl_norm):
-                        break
-                    if len(nl_norm) >= 12:
-                        desc_parts.append(nl_norm)
-                        consumed_until = j
-                    j += 1
-                inline_text = " ".join(desc_parts)
+    structured_starts = _structured_project_starts()
+    if structured_starts:
+        return _build_questions(structured_starts)
 
-            if inline_text:
-                question_starts.append((i, inline_text))
-                i = consumed_until
-
+    # Fallback for labs written as a simple top-level numbered list.
+    question_starts: list[tuple[int, str]] = []
+    i = 0
+    while i < n:
+        m = _NUMBERED_LIST_RE.match(clean_lines[i])
+        if not m:
+            i += 1
+            continue
+        raw_match = _NUMBERED_LIST_RE.match(orig_lines[i])
+        inline_text = _normalise_inline((raw_match or m).group(2))
+        if inline_text:
+            question_starts.append((i, inline_text))
         i += 1
 
-    # Second pass: extract full question blocks from the original (unstripped) text.
-    questions: list[dict] = []
-    for idx, (start_line, headline) in enumerate(question_starts):
-        end_line = question_starts[idx + 1][0] if idx + 1 < len(question_starts) else len(orig_lines)
-        full_block = "\n".join(orig_lines[start_line:end_line]).strip()
-        q_num = idx + 1
-        questions.append({
-            "id": q_num,
-            "number": q_num,
-            "text": headline,
-            "full_text": full_block,
-        })
-
-    return questions
+    return _build_questions(question_starts)
 
 
 # ── Dynamic content (Playwright) ───────────────────────────────────────────────
@@ -411,12 +600,15 @@ async def discover_labs() -> list[Lab]:
                  else _extract_title_from_markdown(content))
                 or _slug_to_title(meta["slug"])
             )
+            category = meta["category"]
+            if meta["subcategory"] == "projects":
+                category = infer_content_topic(title, content, fallback=category)
 
             lab = Lab(
                 slug=meta["slug"],
                 title=title,
                 page_title=title,
-                category=meta["category"],
+                category=category,
                 subcategory=meta["subcategory"],
                 url=pages_url,
                 content=content,
@@ -425,7 +617,7 @@ async def discover_labs() -> list[Lab]:
                 last_scraped=datetime.utcnow(),
             )
             labs.append(lab)
-            print(f"[scraper] ✓ {meta['slug']}  ({meta['category']}/{meta['subcategory']})")
+            print(f"[scraper] ✓ {meta['slug']}  ({category}/{meta['subcategory']})")
         except Exception as exc:
             print(f"[scraper] ✗ {raw_path}: {exc}")
 

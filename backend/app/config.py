@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # ── GitHub integration (optional) ────────────────────────────────────────
     github_token: str = ""
     github_repo: str = ""  # "username/repo-name"
+    watch_github_repo: str = ""  # repo whose GitHub watchers/subscribers should be tracked
 
     # ── Site + scraping ──────────────────────────────────────────────────────
     target_site_url: str = "https://hothaifa96.github.io/DevSecOps22/"
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
     target_github_repo: str = "hothaifa96/DevSecOps22"
     target_github_branch: str = "main"
     scrape_interval_minutes: int = 60
+    watcher_check_interval_minutes: int = 60
 
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str = "sqlite:///./devops_solver.db"

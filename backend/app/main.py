@@ -11,6 +11,7 @@ from .config import settings
 from .database import init_db, engine
 from .models import Lab, Solution
 from .auth import verify_api_key
+from .github_watchers import sync_repo_watchers
 from .routers.labs import router as labs_router, _do_solve_pipeline
 from .scheduler import start_scheduler, stop_scheduler
 from .scraper import discover_labs
@@ -47,24 +48,49 @@ async def _fetch_target_commit() -> str | None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    await _seed_labs_if_empty()
+    await _sync_labs_on_startup()
     start_scheduler()
     # Auto-solve all unsolved labs in the background — no user action needed
     asyncio.create_task(_auto_solve_unsolved())
+    asyncio.create_task(_snapshot_watchers_on_startup())
     yield
     stop_scheduler()
 
 
-async def _seed_labs_if_empty():
+async def _sync_labs_on_startup():
     with Session(engine) as session:
-        existing = session.exec(select(Lab)).first()
-        if not existing:
-            print("[startup] No labs found, seeding from site...")
-            labs = await discover_labs()
-            for lab in labs:
+        existing_count = len(session.exec(select(Lab)).all())
+
+    print("[startup] Syncing labs from target repository...")
+    labs = await discover_labs()
+    if not labs:
+        if existing_count:
+            print("[startup] Target sync returned no labs; keeping existing records")
+        else:
+            print("[startup] Target sync returned no labs")
+        return
+
+    added = 0
+    updated = 0
+    with Session(engine) as session:
+        for lab in labs:
+            existing = session.exec(select(Lab).where(Lab.slug == lab.slug)).first()
+            if existing:
+                existing.content = lab.content
+                existing.questions_raw = lab.questions_raw
+                existing.last_scraped = lab.last_scraped
+                existing.page_title = lab.page_title
+                existing.is_dynamic = lab.is_dynamic
+                existing.url = lab.url
+                if lab.ai_topic:
+                    existing.ai_topic = lab.ai_topic
+                session.add(existing)
+                updated += 1
+            else:
                 session.add(lab)
-            session.commit()
-            print(f"[startup] Seeded {len(labs)} labs")
+                added += 1
+        session.commit()
+    print(f"[startup] Synced {len(labs)} labs ({added} added, {updated} updated)")
 
 
 async def _auto_solve_unsolved():
@@ -121,6 +147,18 @@ async def _auto_solve_unsolved():
     print("[auto-solve] Done.")
 
 
+async def _snapshot_watchers_on_startup():
+    """Record a GitHub watcher snapshot after startup without blocking boot."""
+    await asyncio.sleep(2)
+    try:
+        with Session(engine) as session:
+            result = await sync_repo_watchers(session)
+        if result.get("new_count"):
+            print(f"[watchers] Startup recorded {result['new_count']} new watcher(s)")
+    except Exception as exc:
+        print(f"[watchers] Startup snapshot failed: {exc}")
+
+
 app = FastAPI(
     title="DevOps Solver API",
     description="AI-powered DevOps lab solver with visualization",
@@ -167,3 +205,10 @@ async def meta():
         "target_repo": settings.target_github_repo,
         "target_branch": settings.target_github_branch,
     }
+
+
+@app.get("/repo-watchers", dependencies=[Depends(verify_api_key)])
+async def repo_watchers():
+    """Return and persist a snapshot of current GitHub repo watchers/subscribers."""
+    with Session(engine) as session:
+        return await sync_repo_watchers(session)

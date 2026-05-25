@@ -24,7 +24,7 @@ export interface Lab {
   page_title: string | null;
   /** Subject topic (linux, python, git, docker, …) — never "homework". */
   category: Category;
-  /** Assignment type (labs, homework, lessons). */
+  /** Assignment type (labs, homework, projects, lessons). */
   subcategory: string | null;
   /** Canonical source URL. */
   url: string;
@@ -81,6 +81,35 @@ export interface LastSolvedLab {
   title: string;
   github_url: string | null;
   solved_at: string;
+}
+
+export interface RepoWatcher {
+  login: string;
+  github_id: number | null;
+  avatar_url: string | null;
+  html_url: string | null;
+  type: string | null;
+  site_admin: boolean;
+  is_current: boolean;
+  is_new: boolean;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_checked_at: string;
+}
+
+export interface RepoWatcherSnapshot {
+  repo: string;
+  checked_at: string;
+  subscribers_count: number;
+  stargazers_count: number;
+  github_watchers_count: number;
+  current_count: number;
+  known_count: number;
+  new_count: number;
+  new_watchers: RepoWatcher[];
+  current_watchers: RepoWatcher[];
+  known_watchers: RepoWatcher[];
+  note: string;
 }
 
 export interface Solution {

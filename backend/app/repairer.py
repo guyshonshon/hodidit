@@ -30,6 +30,7 @@ RULES:
 2. Steps must be clean and polished — no mention of "previous attempt", "retry", or "fix".
 3. Cover EVERY task from the original lab, not just the failing step.
 4. Python scripts must be complete and self-contained (no missing imports or undefined vars).
+5. Preserve or set question_ref so every original task still maps to at least one step.
 
 Return the same JSON format as the original solver (include inferred_topic)."""
 
@@ -78,7 +79,8 @@ def _build_repair_prompt(
 
     failed_json = json.dumps(
         [{"type": s.type, "title": s.title, "content": s.content,
-          "output": s.output, "status": s.status}
+          "output": s.output, "status": s.status,
+          "question_ref": s.question_ref}
          for s in failed_steps],
         indent=2,
     )
@@ -91,6 +93,20 @@ def _build_repair_prompt(
         f"EXACT ERROR:\n{error_message[:1500]}\n\n"
         "Produce a corrected, complete solution. Return the JSON now."
     )
+
+
+def _coerce_question_ref(value) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        if value.lower().startswith("q"):
+            value = value[1:]
+        if value.isdigit():
+            return int(value)
+    return None
 
 
 async def repair_solution(
@@ -127,9 +143,12 @@ async def repair_solution(
             id=s["id"],
             type=s["type"],
             title=s["title"],
+            description=s.get("description"),
             content=s["content"],
-            output=s.get("expected_output"),
+            output=s.get("output") or s.get("expected_output"),
+            example_inputs=s.get("example_inputs") or None,
             status="pending",
+            question_ref=_coerce_question_ref(s.get("question_ref")),
         )
         for s in data["steps"]
     ]

@@ -23,7 +23,7 @@ from .models import SolutionStep
 
 SYSTEM_INSTRUCTION = """You are a senior DevOps/Linux/Python/Git/Docker engineer and educator.
 
-Your task: analyze the given lab or homework content and produce a complete, executable solution.
+Your task: analyze the given lab, homework, or project content and produce a complete, executable solution.
 The exercise may belong to any DevOps/programming topic — identify it from the content.
 
 IMPORTANT — Python code steps are ACTUALLY EXECUTED to verify correctness:
@@ -41,7 +41,7 @@ STRICT OUTPUT RULES:
 6. For 'code' steps: content = a complete, self-contained Python script that runs without error.
 7. NEVER use 'explanation' type. All context and explanation goes in the 'description' field.
 8. Cover EVERY numbered task/question from the lab — do not skip any.
-9. Keep steps granular — one command or one code block per step, one step per question.
+9. Keep steps granular — one command, file, milestone, or code block per step.
 10. Use standard assumptions: Ubuntu 22.04, bash shell, git 2.x, Python 3.10+, Docker 24+.
 11. Set 'question_ref' to the question number this step answers (required for all steps).
 12. For Python scripts: write complete, runnable code. The output field should show what
@@ -92,6 +92,22 @@ JSON format to return:
 }"""
 
 
+MISSING_QUESTIONS_SYSTEM = """You are completing missing parts of a structured lab solution.
+
+Return ONLY a single valid JSON object with this shape:
+{"steps": [<solution steps for the missing questions only>]}
+
+Rules:
+- Answer ONLY the missing questions provided in the prompt.
+- Each returned step must be actionable and complete.
+- Use the exact Q number shown in the prompt as question_ref.
+- Do not reuse numbering from inside the question text.
+- Use type "docker" for Docker commands, "git" for Git commands, "command" for shell commands, and "code" for Python scripts.
+- For code steps, include complete runnable Python and example_inputs when input() is used.
+- For project work items, return buildable file/setup/test/documentation steps, not a summary.
+"""
+
+
 # ── Prompt builder ───────────────────────────────────────────────────────────
 
 def _build_prompt(
@@ -105,9 +121,19 @@ def _build_prompt(
     questions = json.loads(questions_raw) if questions_raw else []
 
     q_lines = ""
-    if questions:
+    selected_questions = _selected_questions(questions)
+
+    if selected_questions:
         lines = ["\n--- EXTRACTED QUESTIONS (answer every one) ---"]
-        for q in questions[:40]:
+        lines.append(
+            "Use the Q number at the start of each item as question_ref. "
+            "Do not use nested numbering inside a question body as question_ref."
+        )
+        if len(selected_questions) < len(questions):
+            lines.append(
+                "The source declares an optional choice. Answer only the required/selected Q items listed here."
+            )
+        for q in selected_questions:
             lines.append(f"Q{q.get('number', q.get('id', '?'))}: {q.get('full_text', q.get('text', ''))}")
         q_lines = "\n".join(lines)
 
@@ -122,6 +148,15 @@ def _build_prompt(
             "\nIMPORTANT: Write EXPLICIT manual logic — no max(), min(), sort(), sorted(), sum() or other"
             " built-in shortcuts when the exercise tests algorithmic understanding. Use if/elif/else, loops, etc."
         )
+    elif subcategory == "projects":
+        exec_note = (
+            "\nPROJECT MODE: produce a buildable reference implementation, not a short answer."
+            "\nBreak the project into setup, source files, tests/demo commands, documentation, and submission artifacts."
+            "\nFor multi-file projects, provide exact commands that create directories/files with heredocs, or code steps"
+            " whose title clearly names the file path. Include requirements.txt, README/setup instructions, and any"
+            " AI interaction log file when the source requires it."
+            "\nProject code is not sandboxed automatically, so commands and expected outputs must be realistic and complete."
+        )
 
     error_section = ""
     if previous_error:
@@ -132,19 +167,21 @@ def _build_prompt(
             f"Do not repeat the same mistake.\n"
         )
 
+    content_limit = 12000 if subcategory == "projects" else 5000
+
     return f"""{hint}{exec_note}
 Title: {title}
 
---- LAB / HOMEWORK CONTENT ---
-{content[:5000]}
+--- SOURCE CONTENT ---
+{content[:content_limit]}
 {q_lines}{error_section}
 Return the JSON solution now. No markdown, no extra text."""
 
 
 # ── Response validation ──────────────────────────────────────────────────────
 
-def _make_validate(question_numbers: list[int]):
-    """Return a validator that also checks every question has at least one step."""
+def _make_validate(question_numbers: list[int], *, require_coverage: bool = False):
+    """Return a validator for solver JSON shape and optional question coverage."""
     def _validate(data: dict) -> None:
         if "steps" not in data or not isinstance(data["steps"], list):
             raise ValueError("Response missing 'steps' array")
@@ -152,15 +189,158 @@ def _make_validate(question_numbers: list[int]):
             raise ValueError("Steps array is empty")
         if "summary" not in data:
             raise ValueError("Response missing 'summary'")
-        if question_numbers:
-            refs = {int(s["question_ref"]) for s in data["steps"] if s.get("question_ref") is not None}
-            missing = sorted(set(question_numbers) - refs)
+        if require_coverage and question_numbers:
+            missing = _missing_question_refs(data["steps"], question_numbers)
             if missing:
-                raise ValueError(
-                    f"Missing question_ref for question(s): {missing}. "
-                    f"Every question must have at least one step."
-                )
+                raise ValueError(_missing_questions_message(missing))
     return _validate
+
+
+def _coerce_question_ref(value) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        if value.lower().startswith("q"):
+            value = value[1:]
+        if value.isdigit():
+            return int(value)
+    return None
+
+
+def _normalise_question_refs(steps: list[dict]) -> None:
+    for step in steps:
+        ref = _coerce_question_ref(step.get("question_ref"))
+        if ref is None:
+            step.pop("question_ref", None)
+        else:
+            step["question_ref"] = ref
+
+
+def _missing_question_refs(steps: list[dict], question_numbers: list[int]) -> list[int]:
+    refs = {
+        ref
+        for step in steps
+        if (ref := _coerce_question_ref(step.get("question_ref"))) is not None
+    }
+    return sorted(set(question_numbers) - refs)
+
+
+def _missing_questions_message(missing: list[int]) -> str:
+    return (
+        f"Missing question_ref for question(s): {missing}. "
+        f"Every extracted question must have at least one step."
+    )
+
+
+def _question_numbers(questions: list[dict]) -> list[int]:
+    numbers: list[int] = []
+    for q in _selected_questions(questions):
+        raw = q.get("number", q.get("id"))
+        ref = _coerce_question_ref(raw)
+        if ref is not None:
+            numbers.append(ref)
+    return numbers
+
+
+def _selected_questions(questions: list[dict]) -> list[dict]:
+    return [
+        q for q in questions
+        if q.get("selected", q.get("required", True)) is not False
+    ]
+
+
+def _build_missing_questions_prompt(
+    category: str,
+    title: str,
+    content: str,
+    questions: list[dict],
+    missing: list[int],
+    existing_steps: list[dict],
+    subcategory: str = "",
+) -> str:
+    question_by_number = {
+        _coerce_question_ref(q.get("number", q.get("id"))): q
+        for q in _selected_questions(questions)
+    }
+    missing_lines = []
+    for number in missing:
+        q = question_by_number.get(number) or {}
+        missing_lines.append(f"Q{number}: {q.get('full_text', q.get('text', ''))}")
+
+    compact_steps = [
+        {
+            "type": s.get("type"),
+            "title": s.get("title"),
+            "content": s.get("content"),
+            "question_ref": s.get("question_ref"),
+        }
+        for s in existing_steps
+    ]
+    content_limit = 8000 if subcategory == "projects" else 3500
+
+    return f"""Declared category: {category}, subcategory: {subcategory}
+Title: {title}
+
+--- SOURCE CONTENT (context) ---
+{content[:content_limit]}
+
+--- MISSING QUESTIONS TO COMPLETE ---
+{chr(10).join(missing_lines)}
+
+--- EXISTING SOLUTION STEPS (do not duplicate) ---
+{json.dumps(compact_steps, ensure_ascii=False)[:3500]}
+
+Return JSON now with steps for the missing questions only."""
+
+
+def _make_missing_validate(missing: list[int]):
+    def _validate(data: dict) -> None:
+        if "steps" not in data or not isinstance(data["steps"], list):
+            raise ValueError("Response missing 'steps' array")
+        if not data["steps"]:
+            raise ValueError("Steps array is empty")
+        _normalise_question_refs(data["steps"])
+        still_missing = _missing_question_refs(data["steps"], missing)
+        if still_missing:
+            raise ValueError(_missing_questions_message(still_missing))
+    return _validate
+
+
+async def _complete_missing_questions(
+    client,
+    category: str,
+    title: str,
+    content: str,
+    questions: list[dict],
+    missing: list[int],
+    existing_steps: list[dict],
+    subcategory: str = "",
+) -> list[dict]:
+    prompt = _build_missing_questions_prompt(
+        category=category,
+        title=title,
+        content=content,
+        questions=questions,
+        missing=missing,
+        existing_steps=existing_steps,
+        subcategory=subcategory,
+    )
+    data = await asyncio.to_thread(
+        call_with_retries,
+        client=client,
+        system_instruction=MISSING_QUESTIONS_SYSTEM,
+        prompt=prompt,
+        temperature=0.1,
+        validate_fn=_make_missing_validate(missing),
+    )
+    normalise_steps(data["steps"])
+    _normalise_question_refs(data["steps"])
+    return data["steps"]
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -186,10 +366,9 @@ async def solve_lab(
 
     prompt = _build_prompt(category, title, content, questions_raw, subcategory, previous_error)
 
-    # Build a validator that enforces every question is answered
+    # Validate JSON shape first; missing question coverage is repaired below.
     questions = json.loads(questions_raw) if questions_raw else []
-    q_numbers = [q.get("number", q.get("id")) for q in questions if q.get("number") or q.get("id")]
-    q_numbers = [int(n) for n in q_numbers if n is not None]
+    q_numbers = _question_numbers(questions)
     validate_fn = _make_validate(q_numbers)
 
     data = await asyncio.to_thread(
@@ -201,6 +380,28 @@ async def solve_lab(
     )
 
     normalise_steps(data["steps"])
+    _normalise_question_refs(data["steps"])
+
+    if q_numbers:
+        missing = _missing_question_refs(data["steps"], q_numbers)
+        if missing:
+            print(f"[solver] Completing missing question_ref coverage: {missing}")
+            completion_steps = await _complete_missing_questions(
+                client=client,
+                category=category,
+                title=title,
+                content=content,
+                questions=questions,
+                missing=missing,
+                existing_steps=data["steps"],
+                subcategory=subcategory,
+            )
+            data["steps"].extend(completion_steps)
+            normalise_steps(data["steps"])
+            _normalise_question_refs(data["steps"])
+            missing = _missing_question_refs(data["steps"], q_numbers)
+            if missing:
+                raise RuntimeError(_missing_questions_message(missing))
 
     steps = [
         SolutionStep(
@@ -219,4 +420,3 @@ async def solve_lab(
 
     inferred_topic = data.get("inferred_topic", category).lower().strip() or category
     return data["summary"], steps, inferred_topic, get_solve_provider_label(), prompt
-

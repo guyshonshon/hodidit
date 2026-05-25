@@ -15,7 +15,7 @@ import { labsApi, configApi } from "../lib/api";
 import { toast } from "../components/ui/Toaster";
 import { getTopicConfig } from "../components/CategoryChip";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "../components/ui/Tooltip";
-import { Lab } from "../types";
+import { Lab, RepoWatcherSnapshot } from "../types";
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(() => window.innerWidth < 640);
@@ -79,6 +79,14 @@ export function Dashboard() {
     queryKey: ["meta"],
     queryFn: configApi.meta,
     staleTime: 600_000,
+    retry: false,
+  });
+
+  const { data: watcherSnapshot, isLoading: watchersLoading, error: watchersError } = useQuery({
+    queryKey: ["repo-watchers"],
+    queryFn: configApi.repoWatchers,
+    staleTime: 300_000,
+    refetchInterval: 300_000,
     retry: false,
   });
 
@@ -330,40 +338,44 @@ export function Dashboard() {
               )}
             </motion.section>
 
-            {/* By Type */}
-            <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.26 }}>
-              <SectionLabel>By Type</SectionLabel>
-              {isLoading ? <SkeletonList count={3} /> : (
-                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                  {subcatRows.map((row, i) => {
-                    const rowPct = row.total > 0 ? Math.round((row.solved / row.total) * 100) : 0;
-                    const allDone = row.solved === row.total && row.total > 0;
-                    return (
-                      <div key={row.label}
-                        style={{ padding: "13px 16px", borderBottom: i < subcatRows.length - 1 ? "1px solid var(--border)" : "none" }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-                          <span className="font-mono" style={{ fontSize: 11, fontWeight: 600, color: allDone ? "#34d399" : "var(--text-2)", textTransform: "capitalize", letterSpacing: "0.04em" }}>
-                            {row.label}
-                          </span>
-                          <span className="font-mono" style={{ fontSize: 10, color: allDone ? "#34d399" : "var(--text-3)" }}>
-                            {row.solved}/{row.total} · {rowPct}%
-                          </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* By Type */}
+              <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.26 }}>
+                <SectionLabel>By Type</SectionLabel>
+                {isLoading ? <SkeletonList count={3} /> : (
+                  <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                    {subcatRows.map((row, i) => {
+                      const rowPct = row.total > 0 ? Math.round((row.solved / row.total) * 100) : 0;
+                      const allDone = row.solved === row.total && row.total > 0;
+                      return (
+                        <div key={row.label}
+                          style={{ padding: "13px 16px", borderBottom: i < subcatRows.length - 1 ? "1px solid var(--border)" : "none" }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+                            <span className="font-mono" style={{ fontSize: 11, fontWeight: 600, color: allDone ? "#34d399" : "var(--text-2)", textTransform: "capitalize", letterSpacing: "0.04em" }}>
+                              {row.label}
+                            </span>
+                            <span className="font-mono" style={{ fontSize: 10, color: allDone ? "#34d399" : "var(--text-3)" }}>
+                              {row.solved}/{row.total} · {rowPct}%
+                            </span>
+                          </div>
+                          <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${rowPct}%` }}
+                              transition={{ duration: 0.7, delay: 0.28 + i * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                              style={{ height: "100%", background: allDone ? "#34d399" : "#60a5fa", borderRadius: 2 }}
+                            />
+                          </div>
                         </div>
-                        <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}>
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${rowPct}%` }}
-                            transition={{ duration: 0.7, delay: 0.28 + i * 0.06, ease: [0.16, 1, 0.3, 1] }}
-                            style={{ height: "100%", background: allDone ? "#34d399" : "#60a5fa", borderRadius: 2 }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </motion.section>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.section>
+
+              <WatcherPanel snapshot={watcherSnapshot} loading={watchersLoading} error={watchersError as Error | null} />
+            </div>
 
           </div>
 
@@ -397,6 +409,108 @@ function SkeletonList({ count }: { count: number }) {
           animate={{ opacity: [0.5, 0.75, 0.5] }}
           transition={{ duration: 1.8, repeat: Infinity, delay: i * 0.12 }}
         />
+      ))}
+    </div>
+  );
+}
+
+function WatcherPanel({ snapshot, loading, error }: {
+  snapshot?: RepoWatcherSnapshot;
+  loading: boolean;
+  error: Error | null;
+}) {
+  return (
+    <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}>
+      <SectionLabel>Repo Watchers</SectionLabel>
+      {loading ? <SkeletonList count={2} /> : error ? (
+        <div className="font-mono" style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11, color: "#f87171", lineHeight: 1.6 }}>
+          Watcher check failed: {error.message}
+        </div>
+      ) : !snapshot ? (
+        <div className="font-mono" style={{ padding: "16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11, color: "var(--text-3)" }}>
+          No watcher snapshot available
+        </div>
+      ) : (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+          <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+              <a href={`https://github.com/${snapshot.repo}`} target="_blank" rel="noopener noreferrer" className="font-mono"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "#60a5fa", textDecoration: "none", minWidth: 0 }}
+              >
+                {GH_ICON}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{snapshot.repo}</span>
+              </a>
+              <span className="font-mono" style={{ fontSize: 10, color: "var(--text-3)", flexShrink: 0 }}>
+                {timeAgo(snapshot.checked_at)}
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              <MiniMetric label="watching" value={snapshot.current_count} color="#34d399" />
+              <MiniMetric label="new" value={snapshot.new_count} color={snapshot.new_count > 0 ? "#fbbf24" : "var(--text-3)"} />
+              <MiniMetric label="stars" value={snapshot.stargazers_count} color="#a78bfa" />
+            </div>
+          </div>
+
+          {snapshot.new_watchers.length > 0 && (
+            <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "rgba(251,191,36,0.05)" }}>
+              <div className="font-mono" style={{ fontSize: 9, color: "#fbbf24", letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 8 }}>
+                Newly seen
+              </div>
+              <WatcherList watchers={snapshot.new_watchers} />
+            </div>
+          )}
+
+          <div style={{ padding: "10px 16px" }}>
+            <div className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 8 }}>
+              Current subscribers
+            </div>
+            {snapshot.current_watchers.length === 0 ? (
+              <p className="font-mono" style={{ margin: 0, fontSize: 11, color: "var(--text-3)", lineHeight: 1.6 }}>
+                No public watchers found. GitHub only exposes users who explicitly watch the repo.
+              </p>
+            ) : (
+              <WatcherList watchers={snapshot.current_watchers.slice(0, 8)} />
+            )}
+            {snapshot.current_watchers.length > 8 && (
+              <div className="font-mono" style={{ marginTop: 8, fontSize: 10, color: "var(--text-3)" }}>
+                +{snapshot.current_watchers.length - 8} more tracked
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
+function MiniMetric({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "7px 8px", background: "rgba(255,255,255,0.02)" }}>
+      <div className="font-mono" style={{ fontSize: 15, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+      <div className="font-mono" style={{ fontSize: 8, color: "var(--text-3)", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
+function WatcherList({ watchers }: { watchers: RepoWatcherSnapshot["current_watchers"] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {watchers.map(watcher => (
+        <a key={watcher.login} href={watcher.html_url ?? `https://github.com/${watcher.login}`} target="_blank" rel="noopener noreferrer"
+          style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none", minWidth: 0 }}
+        >
+          {watcher.avatar_url ? (
+            <img src={watcher.avatar_url} alt="" style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid var(--border)", flexShrink: 0 }} />
+          ) : (
+            <span style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface-2)", flexShrink: 0 }} />
+          )}
+          <span className="font-mono" style={{ fontSize: 11, color: watcher.is_new ? "#fbbf24" : "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {watcher.login}
+          </span>
+          <span className="font-mono" style={{ marginLeft: "auto", fontSize: 9, color: "var(--text-3)", flexShrink: 0 }}>
+            {timeAgo(watcher.first_seen_at)}
+          </span>
+        </a>
       ))}
     </div>
   );

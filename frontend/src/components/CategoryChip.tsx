@@ -69,6 +69,14 @@ const KNOWN_TOPICS: Record<string, TopicConfig> = {
     border:  "rgba(139,92,246,0.28)",
     glow:    "rgba(139,92,246,0.12)",
   },
+  projects: {
+    label: "Projects",
+    primary: "#ec4899",
+    text:    "#f472b6",
+    bg:      "rgba(236,72,153,0.1)",
+    border:  "rgba(236,72,153,0.28)",
+    glow:    "rgba(236,72,153,0.12)",
+  },
   bash: {
     label: "Bash",
     primary: "#f59e0b",

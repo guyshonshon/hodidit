@@ -12,7 +12,7 @@ class Lab(SQLModel, table=True):
     page_title: Optional[str] = Field(default=None, sa_column=Column(sa.Text, nullable=True))
     # category: the declared subject topic (linux, python, git, docker, …) — NOT the assignment type
     category: str
-    subcategory: Optional[str] = None  # "labs" | "homework" | "lessons"
+    subcategory: Optional[str] = None  # "labs" | "homework" | "projects" | "lessons"
     url: str
     content: str = ""
     questions_raw: str = ""  # JSON string of raw questions
@@ -85,6 +85,23 @@ class Solution(SQLModel, table=True):
         default="",
         sa_column=Column(sa.Text, nullable=False, server_default=sa.text("''")),
     )
+
+
+class RepoWatcher(SQLModel, table=True):
+    __table_args__ = (sa.UniqueConstraint("repo", "login", name="uq_repo_watcher_repo_login"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    repo: str = Field(index=True)
+    login: str = Field(index=True)
+    github_id: Optional[int] = None
+    avatar_url: Optional[str] = Field(default=None, sa_column=Column(sa.Text, nullable=True))
+    html_url: Optional[str] = Field(default=None, sa_column=Column(sa.Text, nullable=True))
+    type: Optional[str] = Field(default=None, sa_column=Column(sa.Text, nullable=True))
+    site_admin: bool = Field(default=False, sa_column=Column(sa.Boolean, nullable=False, server_default=sa.text("0")))
+    is_current: bool = Field(default=True, sa_column=Column(sa.Boolean, nullable=False, server_default=sa.text("1")))
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_checked_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Pydantic-only models (not DB tables)

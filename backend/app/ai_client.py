@@ -31,6 +31,37 @@ def _is_rate_limit(exc: Exception) -> bool:
 
 # ── JSON cleaning shared by both providers ──────────────────────────────────
 
+def _extract_json_object(raw: str) -> str | None:
+    """Return the first balanced JSON object embedded in raw text, if present."""
+    start = raw.find("{")
+    if start < 0:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for idx in range(start, len(raw)):
+        ch = raw[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return raw[start:idx + 1]
+    return None
+
+
 def _clean_json(raw: str) -> dict:
     if not raw or not raw.strip():
         raise ValueError("AI returned an empty response")
@@ -44,6 +75,12 @@ def _clean_json(raw: str) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
+        embedded = _extract_json_object(raw)
+        if embedded and embedded != raw:
+            try:
+                return json.loads(embedded)
+            except json.JSONDecodeError:
+                pass
         # Gemini sometimes returns Python dict notation (single quotes, True/False/None).
         # ast.literal_eval handles that safely without executing arbitrary code.
         import ast

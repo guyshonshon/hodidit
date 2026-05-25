@@ -267,7 +267,8 @@ async def _do_solve_pipeline(
 
         # Step 4: Verify Python code steps in sandbox + repair loop
         #         Only for labs/homework that actually contain 'code' steps.
-        #         Lessons and labs with no Python code skip the sandbox entirely.
+        #         Projects are often multi-file scaffolds, so they are not run
+        #         through the single-script Python sandbox.
         max_retries = settings.max_repair_retries
         repair_count = 0
         solve_status_detail = "resolved"
@@ -315,6 +316,8 @@ async def _do_solve_pipeline(
                     _log(f"Repair {repair_count}: all Python steps passed ✓")
         elif lab.subcategory == "lessons":
             _log("Lessons — using AI output as-is (no sandbox)")
+        elif lab.subcategory == "projects":
+            _log("Project scaffold — using AI output as-is (no single-script sandbox)")
         else:
             _log("No Python code steps — using AI output as-is")
 

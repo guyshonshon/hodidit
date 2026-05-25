@@ -97,6 +97,17 @@ def _has_intentional_error_hint(content: str, questions_raw: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in _INTENTIONAL_ERROR_HINTS)
 
 
+def _has_solvable_structure(content: str, questions_raw: str) -> bool:
+    """True when local parsing already found concrete task/question structure."""
+    try:
+        questions = json.loads(questions_raw) if questions_raw else []
+    except Exception:
+        questions = []
+    if questions:
+        return True
+    return bool(re.search(r"\b(task|exercise|question|lab)\b", content, re.IGNORECASE))
+
+
 async def classify_exercise(
     content: str,
     questions_raw: str,
@@ -119,6 +130,10 @@ async def classify_exercise(
         reason = f"Pattern match → {fast.value}"
         print(f"[classifier] Pattern → '{title}': {fast.value}")
         return fast, reason
+
+    if _has_solvable_structure(content, questions_raw) and not _has_intentional_error_hint(content, questions_raw):
+        print(f"[classifier] Heuristic → '{title}': normal")
+        return ExerciseType.normal, "Structured questions/tasks found — treated as normal"
 
     client = get_classify_client()
     if not client:
