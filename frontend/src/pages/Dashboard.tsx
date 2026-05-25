@@ -92,7 +92,6 @@ export function Dashboard() {
 
   const total = labs.length;
   const solved = labs.filter(l => l.solved).length;
-  const unsolved = total - solved;
   const solving = labs.filter(l => l.solution_status === "solving").length;
   const pct = total > 0 ? Math.round((solved / total) * 100) : 0;
 
@@ -120,13 +119,6 @@ export function Dashboard() {
     total: labs.filter(l => (l.subcategory ?? "other") === sc).length,
     solved: labs.filter(l => (l.subcategory ?? "other") === sc && l.solved).length,
   }));
-
-  const STAT_CARDS = [
-    { label: "Total", value: total, color: "#60a5fa", bg: "rgba(59,130,246,0.07)", border: "rgba(59,130,246,0.18)" },
-    { label: "Solved", value: solved, color: "#34d399", bg: "rgba(52,211,153,0.07)", border: "rgba(52,211,153,0.18)" },
-    { label: "Unsolved", value: unsolved, color: unsolved > 0 ? "#fbbf24" : "var(--text-3)", bg: unsolved > 0 ? "rgba(251,191,36,0.07)" : "var(--surface)", border: unsolved > 0 ? "rgba(251,191,36,0.18)" : "var(--border)" },
-    { label: "Complete", value: `${pct}%`, color: "#a78bfa", bg: "rgba(139,92,246,0.07)", border: "rgba(139,92,246,0.18)" },
-  ];
 
   return (
     <TooltipProvider>
@@ -185,30 +177,6 @@ export function Dashboard() {
               </div>
             </div>
           </motion.div>
-
-          {/* ── Stat cards ──────────────────────────────────────────── */}
-          {!isLoading && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08 }}
-              style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 28 }}
-            >
-              {STAT_CARDS.map((c, i) => (
-                <motion.div key={c.label}
-                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.08 + i * 0.04 }}
-                  style={{ padding: "16px 20px", borderRadius: 10, background: c.bg, border: `1px solid ${c.border}` }}
-                >
-                  <div className="font-mono" style={{ fontSize: isMobile ? 24 : 28, fontWeight: 700, color: c.color, lineHeight: 1, marginBottom: 5 }}>
-                    {c.value}
-                  </div>
-                  <div className="font-mono" style={{ fontSize: 9, color: "var(--text-3)", letterSpacing: "0.2em", textTransform: "uppercase" }}>
-                    {c.label}
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
 
           {/* ── Solving queue ───────────────────────────────────────── */}
           <AnimatePresence>

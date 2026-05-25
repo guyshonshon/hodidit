@@ -15,6 +15,7 @@ from .github_watchers import sync_repo_watchers
 from .routers.labs import router as labs_router, _do_solve_pipeline
 from .scheduler import start_scheduler, stop_scheduler
 from .scraper import discover_labs
+from .solution_state import solution_has_steps, solution_needs_retry
 
 # ── Target-repo commit cache ────────────────────────────────────────────────────
 _target_commit: dict = {"sha": None, "fetched_at": 0.0}
@@ -105,9 +106,8 @@ async def _auto_solve_unsolved():
             sol = session.exec(
                 select(Solution).where(Solution.lab_slug == lab.slug)
             ).first()
-            has_steps = bool(sol and sol.steps_json and sol.steps_json != "[]")
-            is_solving = bool(sol and sol.status == "solving")
-            if not has_steps and not is_solving:
+            has_steps = solution_has_steps(sol)
+            if not has_steps and solution_needs_retry(sol):
                 unsolved_slugs.append(lab.slug)
 
     if not unsolved_slugs:

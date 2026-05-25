@@ -34,6 +34,7 @@ from ..sandbox import apply_results, collect_sandbox_errors, run_steps_in_sandbo
 from ..scraper import discover_labs, fetch_generated_content
 from ..solver import solve_lab
 from ..git_handler import push_solution_to_github
+from ..solution_state import solution_has_steps, solution_needs_retry, solution_ui_status
 
 _TZ = timezone(timedelta(hours=2))  # GMT+2
 
@@ -72,7 +73,7 @@ async def list_labs(session: Session = Depends(get_session)):
         sol = session.exec(
             select(Solution).where(Solution.lab_slug == lab.slug)
         ).first()
-        has_steps = bool(sol and sol.steps_json and sol.steps_json != "[]")
+        has_steps = solution_has_steps(sol)
         result.append({
             "slug": lab.slug,
             "title": lab.title,
@@ -100,7 +101,7 @@ async def get_lab(slug: str, session: Session = Depends(get_session)):
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
     sol = session.exec(select(Solution).where(Solution.lab_slug == slug)).first()
-    has_steps = bool(sol and sol.steps_json and sol.steps_json != "[]")
+    has_steps = solution_has_steps(sol)
     return {
         "slug": lab.slug,
         "title": lab.title,
@@ -132,7 +133,7 @@ async def solve(slug: str, req: SolveRequest, session: Session = Depends(get_ses
             raise HTTPException(status_code=403, detail="Invalid reforge PIN")
 
     existing = session.exec(select(Solution).where(Solution.lab_slug == slug)).first()
-    has_steps = bool(existing and existing.steps_json and existing.steps_json != "[]")
+    has_steps = solution_has_steps(existing)
 
     # Cache-first: replay stored steps unless explicitly forced
     if has_steps and not req.force:
@@ -186,7 +187,9 @@ async def _do_solve_pipeline(
     """
     solution = existing_solution or Solution(lab_slug=lab.slug)
     solution.status = "solving"
+    solution.created_at = datetime.utcnow()
     solution.solve_log = ""
+    solution.solve_status_detail = ""
     session.add(solution)
     session.commit()
     session.refresh(solution)
@@ -355,8 +358,10 @@ async def _do_solve_pipeline(
         attempt_logs.append(AttemptLog(
             attempt=len(attempt_logs) + 1, was_repair=False, error=str(exc)
         ))
-        solution.status = "solving"   # leave retryable, not a terminal "failed"
+        solution.status = "unsolved"
         solution.summary = str(exc)
+        solution.solved_at = None
+        solution.solve_status_detail = "unresolved"
         solution.internal_log = serialize_logs(attempt_logs)
         session.add(solution)
         session.commit()
@@ -369,7 +374,7 @@ async def _do_solve_pipeline(
 async def get_replay(slug: str, session: Session = Depends(get_session)):
     """Return stored steps for animation replay."""
     sol = session.exec(select(Solution).where(Solution.lab_slug == slug)).first()
-    if not sol or not sol.steps_json or sol.steps_json == "[]":
+    if not solution_has_steps(sol):
         raise HTTPException(status_code=404, detail="No solution stored yet")
     return _format_solution(sol)
 
@@ -377,7 +382,7 @@ async def get_replay(slug: str, session: Session = Depends(get_session)):
 @router.post("/{slug}/push-github")
 async def push_to_github(slug: str, session: Session = Depends(get_session)):
     sol = session.exec(select(Solution).where(Solution.lab_slug == slug)).first()
-    if not sol or not sol.steps_json or sol.steps_json == "[]":
+    if not solution_has_steps(sol):
         raise HTTPException(status_code=400, detail="Lab must be solved first")
     result = push_solution_to_github(slug, json.loads(sol.steps_json), sol.summary)
     return result
@@ -393,6 +398,7 @@ async def re_solve_all(session: Session = Depends(get_session)):
         sol.status = "unsolved"
         sol.summary = ""
         sol.solved_at = None
+        sol.created_at = datetime.utcnow()
         sol.ai_model = ""
         sol.repair_count = 0
         sol.solve_status_detail = ""
@@ -501,6 +507,7 @@ async def sync_labs(request: Request, body: SyncRequest = SyncRequest(), session
 
     fresh = await discover_labs()
     added, updated = 0, 0
+    retry_slugs: set[str] = set()
     for lab in fresh:
         existing = session.exec(select(Lab).where(Lab.slug == lab.slug)).first()
         if existing:
@@ -517,10 +524,24 @@ async def sync_labs(request: Request, body: SyncRequest = SyncRequest(), session
         else:
             session.add(lab)
             added += 1
+
+        sol = session.exec(select(Solution).where(Solution.lab_slug == lab.slug)).first()
+        if solution_needs_retry(sol):
+            if sol:
+                sol.status = "unsolved"
+                sol.solved_at = None
+                if sol.solve_status_detail == "unresolved":
+                    sol.solve_status_detail = ""
+                session.add(sol)
+            retry_slugs.add(lab.slug)
+
     session.commit()
 
+    if retry_slugs:
+        asyncio.create_task(_batch_resolve(sorted(retry_slugs)))
+
     _record_success(ip)
-    return {"added": added, "updated": updated}
+    return {"added": added, "updated": updated, "queued": len(retry_slugs)}
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -539,20 +560,16 @@ def _lab_github_url(lab: Lab) -> str | None:
 
 def _solution_status(sol, has_steps: bool) -> str:
     """Return a clean, simplified status for the UI."""
-    if has_steps:
-        return "solved"
-    if sol and sol.status == "solving" and sol.solve_status_detail not in ("generation_failed", "generation_failed_fallback"):
-        return "solving"
-    return "unsolved"
+    return solution_ui_status(sol, has_steps)
 
 
 def _format_solution(sol: Solution) -> dict:
     """User-facing solution dict. internal_log is intentionally omitted."""
-    has_steps = bool(sol.steps_json and sol.steps_json != "[]")
+    has_steps = solution_has_steps(sol)
     return {
-        "status": "solved" if has_steps else sol.status,
+        "status": solution_ui_status(sol, has_steps),
         "summary": sol.summary,
-        "steps": json.loads(sol.steps_json) if sol.steps_json else [],
+        "steps": json.loads(sol.steps_json) if has_steps else [],
         "solved_at": sol.solved_at.isoformat() if sol.solved_at else None,
         "ai_model": sol.ai_model,
         "exercise_classification": sol.exercise_classification,

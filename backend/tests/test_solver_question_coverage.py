@@ -2,6 +2,7 @@ import json
 
 from backend.app.solver import (
     _build_prompt,
+    _fallback_question_steps,
     _missing_question_refs,
     _missing_question_requirements,
     _normalise_question_refs,
@@ -98,3 +99,26 @@ def test_prompt_lists_nested_challenge_and_cursor_quality_rule():
 
     assert "Challenge (must implement)" in prompt
     assert "use seek()/tell()/read(1)" in prompt
+
+
+def test_fallback_question_steps_cover_missing_docker_refs():
+    questions = [{
+        "number": 9,
+        "full_text": """### Exercise 6: Container Management
+
+**Task:**
+
+1. Run two `nginx` containers named `nginx-1` and `nginx-2` each one in a new port (8081 and 8082) and in background
+2. List all running containers
+3. Stop both containers
+4. Remove both containers
+5. Remove the nginx image
+""",
+    }]
+
+    steps = _fallback_question_steps("docker", questions, [9])
+
+    assert steps[0]["question_ref"] == 9
+    assert steps[0]["type"] == "docker"
+    assert "docker run -d --name nginx-1 -p 8081:80 nginx" in steps[0]["content"]
+    assert _missing_question_refs(steps, [9]) == []
