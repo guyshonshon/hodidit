@@ -39,10 +39,11 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           {/* Intro — full screen, no navbar */}
-          <Route path="/" element={<Intro />} />
+          <Route path="/intro" element={<Intro />} />
 
           {/* App shell — all inner pages share Navbar */}
           <Route element={<MainLayout />}>
+            <Route path="/" element={<Dashboard />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/labs" element={<Labs />} />
             <Route path="/labs/:slug" element={<LabDetail />} />
